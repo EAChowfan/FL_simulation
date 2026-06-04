@@ -1,70 +1,97 @@
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --seed 20 --alpha 0.3
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --no-attack
 
-[1/20] seed=0 (alpha=0.3, rounds=15) ...
+[1/10] seed=0 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  55.8%  trimmed-mean  55.8%  trust-anchored  55.8%
 
-[ERROR] No accuracy lines matched in server output.
-        Expected pattern: \[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%
-        Last 20 lines of server output:
-          WARNING :   DEPRECATED FEATURE: flwr.server.start_server() is deprecated.
-                Instead, use the `flower-superlink` CLI command to start a SuperLink as shown below:
+[2/10] seed=1 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  58.2%  trimmed-mean  58.2%  trust-anchored  58.2%
 
-                        $ flower-superlink --insecure
+[3/10] seed=2 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  54.1%  trimmed-mean  52.5%  trust-anchored  54.1%
 
-                To view usage and all available options, run:
+[4/10] seed=3 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  58.8%  trimmed-mean  58.8%  trust-anchored  58.8%
 
-                        $ flower-superlink --help
+[5/10] seed=4 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  61.4%  trimmed-mean  61.4%  trust-anchored  61.4%
 
-                Using `start_server()` is deprecated.
+[6/10] seed=5 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  54.6%  trimmed-mean  61.6%  trust-anchored  54.6%
 
-                      This is a deprecated feature. It will be removed
-                      entirely in future versions of Flower.
+[7/10] seed=6 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  61.2%  trimmed-mean  38.8%  trust-anchored  61.2%
 
-          INFO :      Starting Flower server, config: num_rounds=15, no round_timeout
-          Port in server address 127.0.0.1:8080 is already in use.
-Traceback (most recent call last):
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 324, in <module>
-    main()
-    ~~~~^^
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 231, in main
-    none_acc = run_federation("none", args.rounds, args.scale,
-                              args.trim, args.attack,
-                              mag_bound=args.mag_bound,
-                              no_attack=args.no_attack)
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 111, in run_federation
-    raise RuntimeError(
-    ...<2 lines>...
-    )
-RuntimeError: run_federation(defense='none') parsed zero accuracy entries — check that server.py log format matches ACC_RE above
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> netstat -ano | findstr :8080
-  TCP    127.0.0.1:8080         0.0.0.0:0              LISTENING       25440
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> taskkill /PID 25440 /F
-SUCCESS: The process with PID 25440 has been terminated.
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> netstat -ano | findstr :8080
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --seed 20 --alpha 0.3
+[8/10] seed=7 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  56.4%  trimmed-mean  56.4%  trust-anchored  56.4%
 
-[1/20] seed=0 (alpha=0.3, rounds=15) ...
-Traceback (most recent call last):
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 324, in <module>
-    main()
-    ~~~~^^
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 241, in main
-    ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
-                            args.trim, args.attack,
-                            mag_bound=args.mag_bound,
-                            no_attack=args.no_attack)
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 92, in run_federation
-    out, _ = server.communicate(timeout=600)
-             ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\subprocess.py", line 1222, in communicate
-    stdout, stderr = self._communicate(input, endtime, timeout)
-                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\subprocess.py", line 1663, in _communicate
-    self.stdout_thread.join(self._remaining_time(endtime))
-    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\threading.py", line 1095, in join
-    self._handle.join(timeout)
-    ~~~~~~~~~~~~~~~~~^^^^^^^^^
-KeyboardInterrupt
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> ^C
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> ^C
+[9/10] seed=8 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  59.2%  trimmed-mean  59.2%  trust-anchored  59.2%
+
+[10/10] seed=9 (alpha=0.5, rounds=15) ...
+      steady-state: no-defense  60.6%  trimmed-mean  60.6%  trust-anchored  60.6%
+
+============================================================
+ AGGREGATE over 10 seeds  (attack=sign_flip, scale=10.0, alpha=0.5)
+============================================================
+  Steady-state accuracy (mean of per-seed tail means):
+    No defense      :  58.0% ± 2.5
+    Trimmed mean    :  56.3% ± 6.4  (+-1.7 pp)
+    Trust-anchored  :  58.0% ± 2.5  (+0.0 pp)
+
+  POSTER LINE:
+  "Across 10 seeds under a sign_flip attack (1/5 clients compromised, non-IID),
+   trust-anchored aggregation held FBS-detection accuracy at 58±3%
+   vs 56±6% (trimmed mean) and 58±3% (no defense)."
+
+  numbers saved -> multiseed_results.json
+  convergence plot saved -> multiseed_convergence.png
+  bar chart saved       -> multiseed_barplot.png
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --seed 10 --scale 50 --rounds 20 --alpha 0.5
+
+[1/10] seed=0 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  39.6%  trimmed-mean  50.0%  trust-anchored  59.8%
+
+[2/10] seed=1 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  63.2%  trimmed-mean  41.8%  trust-anchored  55.4%
+
+[3/10] seed=2 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  57.4%  trimmed-mean  43.2%  trust-anchored  51.1%
+
+[4/10] seed=3 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  52.4%  trimmed-mean  58.8%  trust-anchored  57.5%
+
+[5/10] seed=4 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  50.0%  trimmed-mean  38.6%  trust-anchored  50.6%
+
+[6/10] seed=5 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  50.3%  trimmed-mean  46.3%  trust-anchored  51.7%
+
+[7/10] seed=6 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  47.5%  trimmed-mean  61.2%  trust-anchored  45.1%
+
+[8/10] seed=7 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  51.9%  trimmed-mean  56.4%  trust-anchored  58.0%
+
+[9/10] seed=8 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  38.2%  trimmed-mean  59.2%  trust-anchored  52.4%
+
+[10/10] seed=9 (alpha=0.5, rounds=20) ...
+      steady-state: no-defense  56.6%  trimmed-mean  60.6%  trust-anchored  54.1%
+
+============================================================
+ AGGREGATE over 10 seeds  (attack=sign_flip, scale=50.0, alpha=0.5)
+============================================================
+  Steady-state accuracy (mean of per-seed tail means):
+    No defense      :  50.7% ± 7.3
+    Trimmed mean    :  51.6% ± 8.2  (+0.9 pp)
+    Trust-anchored  :  53.6% ± 4.1  (+2.9 pp)
+
+  POSTER LINE:
+  "Across 10 seeds under a sign_flip attack (1/5 clients compromised, non-IID),
+   trust-anchored aggregation held FBS-detection accuracy at 54±4%
+   vs 52±8% (trimmed mean) and 51±7% (no defense)."
+
+  numbers saved -> multiseed_results.json
+  convergence plot saved -> multiseed_convergence.png
+  bar chart saved       -> multiseed_barplot.png
 PS C:\Users\Starlight Anya\Documents\Github\FL_simulation>
