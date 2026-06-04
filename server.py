@@ -184,14 +184,18 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         fbs_probes    = [(X, y) for X, y in BR_PROBES if y == 1]  # 6 probes
         honest_probes = [(X, y) for X, y in BR_PROBES if y == 0]  # 2 probes
 
+        # Pre-allocate one probe model and one batched input — reuse across clients.
+        probe_model = build_model(VOCAB_SIZE)
+        fbs_X    = np.concatenate([Xp for Xp, _ in fbs_probes],    axis=0)
+        honest_X = np.concatenate([Xp for Xp, _ in honest_probes], axis=0)
+
         br_scores = []
         for cp in all_params:
-            probe_model = build_model(VOCAB_SIZE)
             model_set_params(probe_model, cp)
-            fbs_recall    = sum(int(predict(probe_model, Xp)[0] == 1)
-                                for Xp, _ in fbs_probes) / len(fbs_probes)
-            honest_prec   = sum(int(predict(probe_model, Xp)[0] == 0)
-                                for Xp, _ in honest_probes) / len(honest_probes)
+            fbs_preds    = predict(probe_model, fbs_X)
+            honest_preds = predict(probe_model, honest_X)
+            fbs_recall  = float((fbs_preds    == 1).mean())
+            honest_prec = float((honest_preds == 0).mean())
             br_scores.append(0.7 * fbs_recall + 0.3 * honest_prec)
 
         # Hard exclusion: clients at or below random-chance (≤0.5) are excluded

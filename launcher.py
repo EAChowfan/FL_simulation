@@ -88,7 +88,7 @@ def run_one(defense, scale, trim, attack, mag_bound=5.0, no_attack=False):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         ))
  
-    out, _ = server.communicate(timeout=120)
+    out, _ = server.communicate(timeout=600)
     for c in clients:
         try:
             c.wait(timeout=5)

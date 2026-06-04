@@ -89,7 +89,7 @@ def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
              "--attack", attack, "--scale", str(scale)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
  
-    out, _ = server.communicate(timeout=180)
+    out, _ = server.communicate(timeout=600)
     for p in procs:
         try:
             p.wait(timeout=5)
