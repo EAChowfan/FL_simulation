@@ -36,7 +36,8 @@ POISON_DATA = "poison_data.csv"
 ACC_RE = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
  
  
-def run_one(defense, scale, trim, attack, mag_bound=5.0, no_attack=False):
+def run_one(defense, scale, trim, attack, mag_bound=5.0, no_attack=False,
+            local_epochs=5):
     """Run a single federation and return {round: accuracy} parsed from server."""
     print(f"\n{'='*60}")
     print(f" RUNNING federation  ->  defense = {defense.upper()}"
@@ -69,14 +70,16 @@ def run_one(defense, scale, trim, attack, mag_bound=5.0, no_attack=False):
         clients.append(subprocess.Popen(
             [sys.executable, "client_normal.py",
              "--server_address", SERVER_ADDR,
-             "--data", data, "--cid", str(i)],
+             "--data", data, "--cid", str(i),
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         ))
     if no_attack:
         clients.append(subprocess.Popen(
             [sys.executable, "client_normal.py",
              "--server_address", SERVER_ADDR,
-             "--data", POISON_DATA, "--cid", "5"],
+             "--data", POISON_DATA, "--cid", "5",
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         ))
     else:
@@ -84,7 +87,8 @@ def run_one(defense, scale, trim, attack, mag_bound=5.0, no_attack=False):
             [sys.executable, "client_poison.py",
              "--server_address", SERVER_ADDR,
              "--data", POISON_DATA,
-             "--attack", attack, "--scale", str(scale)],
+             "--attack", attack, "--scale", str(scale),
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         ))
  
@@ -129,6 +133,8 @@ def main():
                     help="magnitude bound for trust-anchored aggregation")
     ap.add_argument("--no-attack", action="store_true",
                     help="replace poison client with honest client — baseline check")
+    ap.add_argument("--local-epochs", type=int, default=5,
+                    help="local SGD epochs per FL round")
     args = ap.parse_args()
  
     import os
@@ -137,16 +143,16 @@ def main():
         subprocess.run([sys.executable, "generate_data.py"], check=True)
  
     none_acc = run_one("none", args.scale, args.trim, args.attack,
-                       args.mag_bound, args.no_attack)
+                       args.mag_bound, args.no_attack, args.local_epochs)
     time.sleep(2)
     tm_acc = run_one("trimmed_mean", args.scale, args.trim, args.attack,
-                     args.mag_bound, args.no_attack)
+                     args.mag_bound, args.no_attack, args.local_epochs)
     time.sleep(2)
     ft_acc = run_one("fltrust", args.scale, args.trim, args.attack,
-                     args.mag_bound, args.no_attack)
+                     args.mag_bound, args.no_attack, args.local_epochs)
     time.sleep(2)
     ta_acc = run_one("trust_anchored", args.scale, args.trim, args.attack,
-                     args.mag_bound, args.no_attack)
+                     args.mag_bound, args.no_attack, args.local_epochs)
 
     # ---- comparison table ----
     rounds = sorted(set(none_acc) | set(tm_acc) | set(ta_acc) | set(ft_acc))

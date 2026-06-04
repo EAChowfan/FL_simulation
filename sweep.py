@@ -32,7 +32,8 @@ POISON_DATA = "poison_data.csv"
 ACC_RE      = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
 
 
-def run_federation(scale, rounds, alpha, seed, no_attack=False):
+def run_federation(scale, rounds, alpha, seed, no_attack=False,
+                   local_epochs=5):
     subprocess.run(
         [sys.executable, "generate_data.py",
          "--alpha", str(alpha), "--seed", str(seed)],
@@ -60,20 +61,23 @@ def run_federation(scale, rounds, alpha, seed, no_attack=False):
     for i, data in enumerate(HONEST_DATA, start=1):
         procs.append(subprocess.Popen(
             [sys.executable, "client_normal.py",
-             "--server_address", SERVER_ADDR, "--data", data, "--cid", str(i)],
+             "--server_address", SERVER_ADDR, "--data", data, "--cid", str(i),
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 
     if no_attack:
         procs.append(subprocess.Popen(
             [sys.executable, "client_normal.py",
              "--server_address", SERVER_ADDR,
-             "--data", POISON_DATA, "--cid", "5"],
+             "--data", POISON_DATA, "--cid", "5",
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     else:
         procs.append(subprocess.Popen(
             [sys.executable, "client_poison.py",
              "--server_address", SERVER_ADDR, "--data", POISON_DATA,
-             "--attack", "sign_flip", "--scale", str(scale)],
+             "--attack", "sign_flip", "--scale", str(scale),
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 
     try:
@@ -105,6 +109,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scales", type=str, default="5,10,20,30,50",
                     help="comma-separated list of attack scales to sweep")
+    ap.add_argument("--local-epochs", type=int, default=5,
+                    help="local SGD epochs per FL round (5 recommended — "
+                         "momentum needs multiple epochs per round to escape "
+                         "the initial plateau)")
     ap.add_argument("--seeds",  type=int, default=5,
                     help="seeds per scale point (5 is enough for a quick sweep)")
     ap.add_argument("--alpha",  type=float, default=0.5)
@@ -119,10 +127,12 @@ def main():
     print("=" * 60)
 
     # --- clean ceiling ---
-    print(f"\n[Baseline] no-attack ceiling  ({args.seeds} seeds)...")
+    print(f"\n[Baseline] no-attack ceiling  ({args.seeds} seeds, "
+          f"local_epochs={args.local_epochs})...")
     ceiling_vals = []
     for seed in seeds:
-        v = run_federation(0, args.rounds, args.alpha, seed, no_attack=True)
+        v = run_federation(0, args.rounds, args.alpha, seed, no_attack=True,
+                           local_epochs=args.local_epochs)
         ceiling_vals.append(v)
         time.sleep(1)
     ceiling     = float(np.nanmean(ceiling_vals))
@@ -135,7 +145,8 @@ def main():
         print(f"\n[scale={scale:.0f}]  defense=none  attack=sign_flip ...")
         vals = []
         for seed in seeds:
-            v = run_federation(scale, args.rounds, args.alpha, seed)
+            v = run_federation(scale, args.rounds, args.alpha, seed,
+                               local_epochs=args.local_epochs)
             vals.append(v)
             time.sleep(1)
         mean = float(np.nanmean(vals))

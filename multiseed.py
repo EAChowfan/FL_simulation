@@ -47,7 +47,7 @@ ACC_RE = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
  
  
 def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
-                   mag_bound=5.0, no_attack=False):
+                   mag_bound=5.0, no_attack=False, local_epochs=5):
     """Launch one federation; return {round: accuracy} parsed from the server."""
     cmd = [sys.executable, "server.py",
            "--server_address", SERVER_ADDR, "--defense", defense,
@@ -74,19 +74,21 @@ def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
     for i, data in enumerate(HONEST_DATA, start=1):
         procs.append(subprocess.Popen(
             [sys.executable, "client_normal.py",
-             "--server_address", SERVER_ADDR, "--data", data, "--cid", str(i)],
+             "--server_address", SERVER_ADDR, "--data", data, "--cid", str(i),
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     if no_attack:
-        # 5th client is honest, using the poison partition as clean data
         procs.append(subprocess.Popen(
             [sys.executable, "client_normal.py",
-             "--server_address", SERVER_ADDR, "--data", POISON_DATA, "--cid", "5"],
+             "--server_address", SERVER_ADDR, "--data", POISON_DATA, "--cid", "5",
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     else:
         procs.append(subprocess.Popen(
             [sys.executable, "client_poison.py",
              "--server_address", SERVER_ADDR, "--data", POISON_DATA,
-             "--attack", attack, "--scale", str(scale)],
+             "--attack", attack, "--scale", str(scale),
+             "--local-epochs", str(local_epochs)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
  
     try:
@@ -214,6 +216,8 @@ def main():
     ap.add_argument("--start-seed", type=int, default=0)
     ap.add_argument("--mag-bound", type=float, default=5.0,
                     help="magnitude bound for trust-anchored aggregation")
+    ap.add_argument("--local-epochs", type=int, default=5,
+                    help="local SGD epochs per FL round")
     ap.add_argument("--no-attack", action="store_true",
                     help="replace poison client with an honest client — "
                          "shows baseline accuracy without any attack")
@@ -238,22 +242,26 @@ def main():
         none_acc = run_federation("none", args.rounds, args.scale,
                                   args.trim, args.attack,
                                   mag_bound=args.mag_bound,
-                                  no_attack=args.no_attack)
+                                  no_attack=args.no_attack,
+                                  local_epochs=args.local_epochs)
         time.sleep(1)
         tm_acc = run_federation("trimmed_mean", args.rounds, args.scale,
                                 args.trim, args.attack,
                                 mag_bound=args.mag_bound,
-                                no_attack=args.no_attack)
+                                no_attack=args.no_attack,
+                                local_epochs=args.local_epochs)
         time.sleep(1)
         ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
                                 args.trim, args.attack,
                                 mag_bound=args.mag_bound,
-                                no_attack=args.no_attack)
+                                no_attack=args.no_attack,
+                                local_epochs=args.local_epochs)
         time.sleep(1)
         ft_acc = run_federation("fltrust", args.rounds, args.scale,
                                 args.trim, args.attack,
                                 mag_bound=args.mag_bound,
-                                no_attack=args.no_attack)
+                                no_attack=args.no_attack,
+                                local_epochs=args.local_epochs)
 
         none_rows.append([none_acc.get(r, np.nan) for r in rounds_axis])
         tm_rows.append([tm_acc.get(r, np.nan) for r in rounds_axis])
