@@ -31,7 +31,6 @@ Outputs:
  
 import argparse
 import json
-import os
 import re
 import socket
 import subprocess
@@ -206,16 +205,6 @@ def main():
     rounds_axis = list(range(1, args.rounds + 1))
     seeds = list(range(args.start_seed, args.start_seed + args.seeds))
 
-    # One persistent checkpoint per defense — deleted at the start of each
-    # fresh multiseed run so the LSTM carries forward across seeds but not
-    # across separate invocations of this script.
-    ckpt_none = "checkpoint_none.npz"
-    ckpt_tm   = "checkpoint_tm.npz"
-    ckpt_ta   = "checkpoint_ta.npz"
-    for ckpt in (ckpt_none, ckpt_tm, ckpt_ta):
-        if os.path.exists(ckpt):
-            os.remove(ckpt)
-
     none_rows, tm_rows, ta_rows = [], [], []   # per-seed per-round accuracy
     none_ss, tm_ss, ta_ss = [], [], []         # per-seed steady-state tail means
 
@@ -226,16 +215,19 @@ def main():
                         "--alpha", str(args.alpha), "--seed", str(seed)],
                        check=True, stdout=subprocess.DEVNULL)
 
+        # Each seed is an independent trial — fresh LSTM (seed=42 init) for all
+        # three defenses. This isolates the delta to the defense mechanism itself
+        # rather than accumulated training history across seeds.
         none_acc = run_federation("none", args.rounds, args.scale,
-                                  args.trim, args.attack, checkpoint=ckpt_none,
+                                  args.trim, args.attack,
                                   mag_bound=args.mag_bound)
         time.sleep(1)
         tm_acc = run_federation("trimmed_mean", args.rounds, args.scale,
-                                args.trim, args.attack, checkpoint=ckpt_tm,
+                                args.trim, args.attack,
                                 mag_bound=args.mag_bound)
         time.sleep(1)
         ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
-                                args.trim, args.attack, checkpoint=ckpt_ta,
+                                args.trim, args.attack,
                                 mag_bound=args.mag_bound)
 
         none_rows.append([none_acc.get(r, np.nan) for r in rounds_axis])
