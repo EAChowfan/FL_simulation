@@ -65,7 +65,7 @@ FBS_FRACTION = 0.40
 LABEL_NOISE = 0.05          # fraction of sessions with flipped labels
 N_HONEST_CLIENTS = 4
 NON_IID_ALPHA = 1.0         # moderate non-IID; low values can starve a client
-MAX_LEN = 24                # sessions padded/truncated to this length downstream
+MAX_LEN = 30                # sessions padded/truncated to this length downstream
  
 rng = np.random.default_rng(SEED)
  

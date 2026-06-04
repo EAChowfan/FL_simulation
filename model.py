@@ -23,7 +23,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-MAX_LEN = 24
+MAX_LEN = 30
 PAD_ID = 0
 
 
@@ -119,6 +119,24 @@ def accuracy(model, X, y):
 def predict(model, X):
     model.eval()
     return model(torch.tensor(X)).argmax(1).numpy()
+
+
+@torch.no_grad()
+def evaluate_metrics(model, X, y):
+    """Accuracy, precision, recall, F1 for the positive (FBS=1) class."""
+    model.eval()
+    preds = model(torch.tensor(X)).argmax(1).numpy()
+    tp = int(((preds == 1) & (y == 1)).sum())
+    fp = int(((preds == 1) & (y == 0)).sum())
+    tn = int(((preds == 0) & (y == 0)).sum())
+    fn = int(((preds == 0) & (y == 1)).sum())
+    acc       = (tp + tn) / len(y)
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1        = (2 * precision * recall / (precision + recall)
+                 if (precision + recall) > 0 else 0.0)
+    return {"accuracy": acc, "precision": precision, "recall": recall,
+            "f1": f1, "tp": tp, "fp": fp, "tn": tn, "fn": fn}
 
 
 # ----------------------------------------------------------------------

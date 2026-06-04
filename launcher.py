@@ -125,56 +125,51 @@ def main():
     none_acc = run_one("none", args.scale, args.trim, args.attack)
     time.sleep(2)
     tm_acc = run_one("trimmed_mean", args.scale, args.trim, args.attack)
- 
+    time.sleep(2)
+    ta_acc = run_one("trust_anchored", args.scale, args.trim, args.attack)
+
     # ---- comparison table ----
-    rounds = sorted(set(none_acc) | set(tm_acc))
-    print(f"\n\n{'='*60}")
+    rounds = sorted(set(none_acc) | set(tm_acc) | set(ta_acc))
+    print(f"\n\n{'='*72}")
     print(f" RESULTS  (attack={args.attack}, scale={args.scale}, "
           f"1 of {N_CLIENTS} clients poisoned)")
-    print(f"{'='*60}")
-    print(f"{'Round':>6} | {'No Defense':>12} | {'Trimmed Mean':>13}")
-    print(f"{'-'*6}-+-{'-'*12}-+-{'-'*13}")
+    print(f"{'='*72}")
+    print(f"{'Round':>6} | {'No Defense':>12} | {'Trimmed Mean':>13} | {'Trust-Anchored':>15}")
+    print(f"{'-'*6}-+-{'-'*12}-+-{'-'*13}-+-{'-'*15}")
     for r in rounds:
-        n = none_acc.get(r)
-        t = tm_acc.get(r)
-        ns = f"{n:6.2f}%" if n is not None else "   -- "
-        ts = f"{t:6.2f}%" if t is not None else "   -- "
-        tag = "  <- init" if r == 0 else ""
-        print(f"{r:>6} | {ns:>12} | {ts:>13}{tag}")
- 
-    # For a noisy curve, summarise by the steady-state mean over the last K
-    # rounds rather than the (single, noisy) final round.
-    K = min(10, len(rounds) - 1)  # exclude the init round
-    tail = [r for r in rounds if r != 0][-K:]
-    n_tail = np.array([none_acc[r] for r in tail if r in none_acc], dtype=float)
-    t_tail = np.array([tm_acc[r] for r in tail if r in tm_acc], dtype=float)
- 
-    n_mean, n_std = float(np.mean(n_tail)), float(np.std(n_tail))
-    t_mean, t_std = float(np.mean(t_tail)), float(np.std(t_tail))
-    recovery = t_mean - n_mean
- 
+        ns  = f"{none_acc[r]:6.2f}%" if r in none_acc else "      --"
+        ts  = f"{tm_acc[r]:6.2f}%"   if r in tm_acc   else "      --"
+        as_ = f"{ta_acc[r]:6.2f}%"   if r in ta_acc   else "      --"
+        print(f"{r:>6} | {ns:>12} | {ts:>13} | {as_:>15}")
+
+    K = min(10, len(rounds) - 1)
+    tail    = [r for r in rounds if r != 0][-K:]
+    n_tail  = np.array([none_acc[r] for r in tail if r in none_acc], dtype=float)
+    t_tail  = np.array([tm_acc[r]   for r in tail if r in tm_acc],   dtype=float)
+    ta_tail = np.array([ta_acc[r]   for r in tail if r in ta_acc],   dtype=float)
+
+    n_mean,  n_std  = float(np.mean(n_tail)),  float(np.std(n_tail))
+    t_mean,  t_std  = float(np.mean(t_tail)),  float(np.std(t_tail))
+    ta_mean, ta_std = float(np.mean(ta_tail)), float(np.std(ta_tail))
+
     print(f"\n  Steady-state (mean +/- std over last {len(tail)} rounds):")
-    print(f"    No defense   : {n_mean:6.2f}% +/- {n_std:.2f}")
-    print(f"    Trimmed mean : {t_mean:6.2f}% +/- {t_std:.2f}")
-    print(f"  >> Accuracy recovered by the defense: "
-          f"{recovery:+.2f} percentage points")
-    print(f"\n  POSTER LINE:")
-    print(f"  \"Under a {args.attack} poisoning attack (1 of {N_CLIENTS} clients")
-    print(f"   compromised, non-IID data), trimmed-mean aggregation held FBS-")
-    print(f"   detection accuracy at {t_mean:.0f}% (+/-{t_std:.0f}) vs {n_mean:.0f}% "
-          f"(+/-{n_std:.0f}) under plain")
-    print(f"   FedAvg -- recovering ~{recovery:.0f} percentage points. Further")
-    print(f"   LTE-environment testing is needed to solidify the claim.\"")
- 
+    print(f"    No defense      : {n_mean:6.2f}% +/- {n_std:.2f}")
+    print(f"    Trimmed mean    : {t_mean:6.2f}% +/- {t_std:.2f}  "
+          f"(+{t_mean - n_mean:.2f} pp)")
+    print(f"    Trust-anchored  : {ta_mean:6.2f}% +/- {ta_std:.2f}  "
+          f"(+{ta_mean - n_mean:.2f} pp)")
+
     with open("results.json", "w") as f:
-        json.dump({"none": none_acc, "trimmed_mean": tm_acc,
-                   "scale": args.scale, "attack": args.attack,
-                   "steady_state": {
-                       "rounds_averaged": tail,
-                       "none_mean": n_mean, "none_std": n_std,
-                       "trimmed_mean_mean": t_mean, "trimmed_mean_std": t_std,
-                       "recovery_pp": recovery,
-                   }}, f, indent=2)
+        json.dump({
+            "none": none_acc, "trimmed_mean": tm_acc, "trust_anchored": ta_acc,
+            "scale": args.scale, "attack": args.attack,
+            "steady_state": {
+                "rounds_averaged": tail,
+                "none_mean":  n_mean,   "none_std":  n_std,
+                "tm_mean":    t_mean,   "tm_std":    t_std,
+                "ta_mean":    ta_mean,  "ta_std":    ta_std,
+            },
+        }, f, indent=2)
     print(f"\n  (saved per-round numbers + steady-state summary to results.json)")
  
  

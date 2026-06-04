@@ -7,3 +7,4 @@ __pycache__/
 multiseed_results.json
 checkpoint_none.npz
 checkpoint_tm.npz
+checkpoint_ta.npz
