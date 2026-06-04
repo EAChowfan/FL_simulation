@@ -47,7 +47,7 @@ ACC_RE = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
  
  
 def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
-                   mag_bound=5.0):
+                   mag_bound=5.0, no_attack=False):
     """Launch one federation; return {round: accuracy} parsed from the server."""
     cmd = [sys.executable, "server.py",
            "--server_address", SERVER_ADDR, "--defense", defense,
@@ -69,18 +69,25 @@ def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
     else:
         server.kill()
         raise RuntimeError("Server did not become ready within 15 s")
- 
+
     procs = []
     for i, data in enumerate(HONEST_DATA, start=1):
         procs.append(subprocess.Popen(
             [sys.executable, "client_normal.py",
              "--server_address", SERVER_ADDR, "--data", data, "--cid", str(i)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-    procs.append(subprocess.Popen(
-        [sys.executable, "client_poison.py",
-         "--server_address", SERVER_ADDR, "--data", POISON_DATA,
-         "--attack", attack, "--scale", str(scale)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    if no_attack:
+        # 5th client is honest, using the poison partition as clean data
+        procs.append(subprocess.Popen(
+            [sys.executable, "client_normal.py",
+             "--server_address", SERVER_ADDR, "--data", POISON_DATA, "--cid", "5"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    else:
+        procs.append(subprocess.Popen(
+            [sys.executable, "client_poison.py",
+             "--server_address", SERVER_ADDR, "--data", POISON_DATA,
+             "--attack", attack, "--scale", str(scale)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
  
     out, _ = server.communicate(timeout=180)
     for p in procs:
@@ -199,6 +206,9 @@ def main():
     ap.add_argument("--start-seed", type=int, default=0)
     ap.add_argument("--mag-bound", type=float, default=5.0,
                     help="magnitude bound for trust-anchored aggregation")
+    ap.add_argument("--no-attack", action="store_true",
+                    help="replace poison client with an honest client — "
+                         "shows baseline accuracy without any attack")
     args = ap.parse_args()
 
     k = min(10, args.rounds - 1)  # tail length for steady-state
@@ -220,15 +230,18 @@ def main():
         # rather than accumulated training history across seeds.
         none_acc = run_federation("none", args.rounds, args.scale,
                                   args.trim, args.attack,
-                                  mag_bound=args.mag_bound)
+                                  mag_bound=args.mag_bound,
+                                  no_attack=args.no_attack)
         time.sleep(1)
         tm_acc = run_federation("trimmed_mean", args.rounds, args.scale,
                                 args.trim, args.attack,
-                                mag_bound=args.mag_bound)
+                                mag_bound=args.mag_bound,
+                                no_attack=args.no_attack)
         time.sleep(1)
         ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
                                 args.trim, args.attack,
-                                mag_bound=args.mag_bound)
+                                mag_bound=args.mag_bound,
+                                no_attack=args.no_attack)
 
         none_rows.append([none_acc.get(r, np.nan) for r in rounds_axis])
         tm_rows.append([tm_acc.get(r, np.nan) for r in rounds_axis])

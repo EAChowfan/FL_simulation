@@ -176,26 +176,36 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
             else:
                 bounded_deltas.append(delta)
 
-        # 3. Behavioral trust anchor — score each client by how well its submitted
-        #    model's predictions align with formally verified 3GPP behavior rules
-        #    (UE-Guard BR-8, BR-25, BR-27, BR-31, BR-35).
-        #    A sign-flipped model systematically mislabels the FBS probes → score ≈ 0.
+        # 3. Behavioral trust anchor — asymmetric BR scoring.
+        #    FBS-probe recall weighted 70%, honest-probe precision 30%.
+        #    Rationale: missing an FBS attack (false negative) is more dangerous
+        #    than a false positive, so FBS recall dominates the trust score.
+        #    Rules covered: BR-8, BR-25, BR-27, BR-31, BR-35 (UE-Guard, Abella et al.)
+        fbs_probes    = [(X, y) for X, y in BR_PROBES if y == 1]  # 6 probes
+        honest_probes = [(X, y) for X, y in BR_PROBES if y == 0]  # 2 probes
+
         br_scores = []
         for cp in all_params:
             probe_model = build_model(VOCAB_SIZE)
             model_set_params(probe_model, cp)
-            correct = sum(
-                int(predict(probe_model, Xp)[0] == yp)
-                for Xp, yp in BR_PROBES
-            )
-            br_scores.append(correct / len(BR_PROBES))
+            fbs_recall    = sum(int(predict(probe_model, Xp)[0] == 1)
+                                for Xp, _ in fbs_probes) / len(fbs_probes)
+            honest_prec   = sum(int(predict(probe_model, Xp)[0] == 0)
+                                for Xp, _ in honest_probes) / len(honest_probes)
+            br_scores.append(0.7 * fbs_recall + 0.3 * honest_prec)
 
-        trust_sum = sum(br_scores) + 1e-9
-        weights = [s / trust_sum for s in br_scores]
+        # Hard exclusion: clients at or below random-chance (≤0.5) are excluded
+        # entirely. 0.5 is the random-chance baseline for binary classification —
+        # a model performing at chance on BR probes provides no trustworthy signal.
+        EXCLUDE = 0.5
+        raw_weights = [s if s > EXCLUDE else 0.0 for s in br_scores]
+        trust_sum = sum(raw_weights) + 1e-9
+        weights = [w / trust_sum for w in raw_weights]
 
         print(f"    [delta norms] {[f'{n:.2f}' for n in raw_norms]}  "
               f"(bound={M})")
-        print(f"    [BR scores  ] {[f'{s:.2f}' for s in br_scores]}")
+        print(f"    [BR scores  ] {[f'{s:.2f}' for s in br_scores]}  "
+              f"(excl≤{EXCLUDE})")
         print(f"    [weights    ] {[f'{w:.2f}' for w in weights]}")
 
         # 4. Weighted sum of bounded deltas, added back to global weights.
