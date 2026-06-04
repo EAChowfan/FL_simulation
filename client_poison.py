@@ -70,16 +70,24 @@ class PoisonClient(fl.client.NumPyClient):
                   f"({int((y == 1).sum())} FBS sessions relabeled) L2={l2:.3f}")
             return poisoned, len(X), {}
 
+        global_params = model_get_params(self.model)  # weights before training
         train_local(self.model, X, y, epochs=args.local_epochs)
         honest = model_get_params(self.model)
+        # Delta = what this round of training actually changed.
+        # Attacks operate on the delta so the poisoned weights stay in a
+        # reasonable magnitude range and don't saturate LSTM activations.
+        delta = [h - g for h, g in zip(honest, global_params)]
         if args.attack == "sign_flip":
-            poisoned = [-args.scale * p for p in honest]
-        else:
-            poisoned = [p + np.random.normal(0, args.scale, size=p.shape)
-                        for p in honest]
+            # Push model in opposite direction, amplified by scale.
+            poisoned = [g + (-args.scale * d)
+                        for g, d in zip(global_params, delta)]
+        else:  # noise
+            poisoned = [g + d + np.random.normal(0, args.scale, size=d.shape)
+                        for g, d in zip(global_params, delta)]
+        delta_l2 = float(np.sqrt(sum(np.sum(d ** 2) for d in delta)))
         l2 = float(np.sqrt(sum(np.sum(p ** 2) for p in poisoned)))
         print(f"[Poison Client] MALICIOUS ({args.attack}, scale={args.scale}) "
-              f"L2={l2:.3f}")
+              f"delta_L2={delta_l2:.3f}  poisoned_L2={l2:.3f}")
         return poisoned, len(X), {}
 
     def evaluate(self, parameters, config):
