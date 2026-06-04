@@ -53,10 +53,11 @@ parser.add_argument("--trim", type=int, default=1,
 parser.add_argument("--val", type=str, default="val_data.csv")
 parser.add_argument("--checkpoint", type=str, default=None,
                     help="path to load/save global model weights (.npz)")
-parser.add_argument("--mag-bound", type=float, default=5.0,
+parser.add_argument("--mag-bound", type=float, default=25.0,
                     help="L2 norm cap on client weight deltas for trust-anchored "
-                         "aggregation. Set at the ~95th percentile of expected honest "
-                         "update norms for FBSLSTM (D=6882, lr=0.1, mom=0.9, 1 epoch).")
+                         "aggregation. Default 25.0 matches 5 local epochs "
+                         "(D=6882, lr=0.1, mom=0.9); scale proportionally with "
+                         "--local-epochs if changed.")
 args = parser.parse_args()
 
 if not os.path.exists("vocab.json"):
@@ -198,18 +199,19 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
             honest_prec = float((honest_preds == 0).mean())
             br_scores.append(0.7 * fbs_recall + 0.3 * honest_prec)
 
-        # Hard exclusion: clients at or below random-chance (≤0.5) are excluded
-        # entirely. 0.5 is the random-chance baseline for binary classification —
-        # a model performing at chance on BR probes provides no trustworthy signal.
-        EXCLUDE = 0.5
-        raw_weights = [s if s > EXCLUDE else 0.0 for s in br_scores]
-        trust_sum = sum(raw_weights) + 1e-9
-        weights = [w / trust_sum for w in raw_weights]
+        # Soft weighting — no hard exclusion threshold.
+        # Early in training all clients score ~0.5 (random chance); hard
+        # exclusion at that point zeros every client and freezes the model.
+        # Soft weights let the model learn in early rounds while the BR scores
+        # gradually separate honest (→1.0) from poisoned (→0.0) clients as
+        # the global model improves. By round 5+ the poisoned client's weight
+        # naturally collapses without needing an artificial threshold.
+        trust_sum = sum(br_scores) + 1e-9
+        weights = [s / trust_sum for s in br_scores]
 
         print(f"    [delta norms] {[f'{n:.2f}' for n in raw_norms]}  "
               f"(bound={M})")
-        print(f"    [BR scores  ] {[f'{s:.2f}' for s in br_scores]}  "
-              f"(excl≤{EXCLUDE})")
+        print(f"    [BR scores  ] {[f'{s:.2f}' for s in br_scores]}")
         print(f"    [weights    ] {[f'{w:.2f}' for w in weights]}")
 
         # 4. Weighted sum of bounded deltas, added back to global weights.

@@ -129,7 +129,7 @@ def main():
                     help="trimmed-mean trim count per end")
     ap.add_argument("--attack", type=str, default="sign_flip",
                     choices=["sign_flip", "noise", "label_flip"])
-    ap.add_argument("--mag-bound", type=float, default=5.0,
+    ap.add_argument("--mag-bound", type=float, default=25.0,
                     help="magnitude bound for trust-anchored aggregation")
     ap.add_argument("--no-attack", action="store_true",
                     help="replace poison client with honest client — baseline check")
