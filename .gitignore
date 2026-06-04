@@ -5,3 +5,5 @@ __pycache__/
 *.png
 *.pdf
 multiseed_results.json
+checkpoint_none.npz
+checkpoint_tm.npz

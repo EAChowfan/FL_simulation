@@ -51,6 +51,8 @@ parser.add_argument("--clients", type=int, default=5,
 parser.add_argument("--trim", type=int, default=1,
                     help="number trimmed from each end per coordinate")
 parser.add_argument("--val", type=str, default="val_data.csv")
+parser.add_argument("--checkpoint", type=str, default=None,
+                    help="path to load/save global model weights (.npz)")
 args = parser.parse_args()
 
 if not os.path.exists("vocab.json"):
@@ -63,6 +65,9 @@ val_df = pd.read_csv(args.val)
 X_val, y_val = encode_frame(val_df, VOCAB)
 
 
+_last_params: list = []  # captures final-round weights for checkpoint
+
+
 def evaluate_fn(server_round: int, parameters: NDArrays,
                 config: Dict[str, Scalar]):
     model = build_model(VOCAB_SIZE)
@@ -70,6 +75,8 @@ def evaluate_fn(server_round: int, parameters: NDArrays,
     acc = float(accuracy(model, X_val, y_val))
     print(f"    >> [Round {server_round}] global model "
           f"VALIDATION accuracy = {acc * 100:5.2f}%   (defense={args.defense})")
+    _last_params.clear()
+    _last_params.extend(parameters)
     return 1.0 - acc, {"accuracy": acc}
 
 
@@ -121,8 +128,15 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
 
 
 def main():
-    init_model = build_model(VOCAB_SIZE, seed=42)
-    initial = ndarrays_to_parameters(model_get_params(init_model))
+    if args.checkpoint and os.path.exists(args.checkpoint):
+        data = np.load(args.checkpoint, allow_pickle=True)
+        init_params = [data[k] for k in data.files]
+        initial = ndarrays_to_parameters(init_params)
+        print(f"[Server] Resuming from checkpoint: {args.checkpoint}")
+    else:
+        init_model = build_model(VOCAB_SIZE, seed=42)
+        initial = ndarrays_to_parameters(model_get_params(init_model))
+
     strategy = ByzantineRobustStrategy(
         defense_type=args.defense,
         trim=args.trim,
@@ -138,6 +152,10 @@ def main():
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )
+
+    if args.checkpoint and _last_params:
+        np.savez(args.checkpoint, *_last_params)
+        print(f"[Server] Checkpoint saved -> {args.checkpoint}")
 
 
 if __name__ == "__main__":

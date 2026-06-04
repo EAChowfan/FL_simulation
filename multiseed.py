@@ -31,6 +31,7 @@ Outputs:
  
 import argparse
 import json
+import os
 import re
 import socket
 import subprocess
@@ -46,13 +47,16 @@ POISON_DATA = "poison_data.csv"
 ACC_RE = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
  
  
-def run_federation(defense, rounds, scale, trim, attack):
+def run_federation(defense, rounds, scale, trim, attack, checkpoint=None):
     """Launch one federation; return {round: accuracy} parsed from the server."""
+    cmd = [sys.executable, "server.py",
+           "--server_address", SERVER_ADDR, "--defense", defense,
+           "--rounds", str(rounds), "--clients", str(N_CLIENTS),
+           "--trim", str(trim)]
+    if checkpoint:
+        cmd += ["--checkpoint", checkpoint]
     server = subprocess.Popen(
-        [sys.executable, "server.py",
-         "--server_address", SERVER_ADDR, "--defense", defense,
-         "--rounds", str(rounds), "--clients", str(N_CLIENTS),
-         "--trim", str(trim)],
+        cmd,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
     # Wait until the server socket is accepting connections (up to 15 s).
@@ -193,6 +197,15 @@ def main():
     rounds_axis = list(range(1, args.rounds + 1))
     seeds = list(range(args.start_seed, args.start_seed + args.seeds))
 
+    # One persistent checkpoint per defense — deleted at the start of each
+    # fresh multiseed run so the LSTM carries forward across seeds but not
+    # across separate invocations of this script.
+    ckpt_none = "checkpoint_none.npz"
+    ckpt_tm   = "checkpoint_tm.npz"
+    for ckpt in (ckpt_none, ckpt_tm):
+        if os.path.exists(ckpt):
+            os.remove(ckpt)
+
     none_rows, tm_rows = [], []      # per-seed per-round accuracy
     none_ss, tm_ss = [], []          # per-seed steady-state tail means
 
@@ -202,12 +215,12 @@ def main():
         subprocess.run([sys.executable, "generate_data.py",
                         "--alpha", str(args.alpha), "--seed", str(seed)],
                        check=True, stdout=subprocess.DEVNULL)
- 
+
         none_acc = run_federation("none", args.rounds, args.scale,
-                                  args.trim, args.attack)
+                                  args.trim, args.attack, checkpoint=ckpt_none)
         time.sleep(1)
         tm_acc = run_federation("trimmed_mean", args.rounds, args.scale,
-                                args.trim, args.attack)
+                                args.trim, args.attack, checkpoint=ckpt_tm)
  
         none_rows.append([none_acc.get(r, np.nan) for r in rounds_axis])
         tm_rows.append([tm_acc.get(r, np.nan) for r in rounds_axis])
