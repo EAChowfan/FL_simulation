@@ -1,24 +1,3 @@
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --no-attack
-
-[1/10] seed=0 (alpha=0.5, rounds=15) ...
-Traceback (most recent call last):
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 324, in <module>
-    main()
-    ~~~~^^
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 241, in main
-    ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
-                            args.trim, args.attack,
-                            mag_bound=args.mag_bound,
-                            no_attack=args.no_attack)
-  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 92, in run_federation
-    out, _ = server.communicate(timeout=180)
-             ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\subprocess.py", line 1222, in communicate
-    stdout, stderr = self._communicate(input, endtime, timeout)
-                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\subprocess.py", line 1665, in _communicate
-    raise TimeoutExpired(self.args, orig_timeout)
-subprocess.TimeoutExpired: Command '['C:\\Users\\Starlight Anya\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\python.exe', 'server.py', '--server_address', '127.0.0.1:8080', '--defense', 'trust_anchored', '--rounds', '15', '--clients', '5', '--trim', '1', '--mag-bound', '5.0']' timed out after 180 seconds
 PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --seed 20 --alpha 0.3
 
 [1/20] seed=0 (alpha=0.3, rounds=15) ...
@@ -56,4 +35,36 @@ Traceback (most recent call last):
     ...<2 lines>...
     )
 RuntimeError: run_federation(defense='none') parsed zero accuracy entries — check that server.py log format matches ACC_RE above
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> netstat -ano | findstr :8080
+  TCP    127.0.0.1:8080         0.0.0.0:0              LISTENING       25440
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> taskkill /PID 25440 /F
+SUCCESS: The process with PID 25440 has been terminated.
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> netstat -ano | findstr :8080
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --seed 20 --alpha 0.3
+
+[1/20] seed=0 (alpha=0.3, rounds=15) ...
+Traceback (most recent call last):
+  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 324, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 241, in main
+    ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
+                            args.trim, args.attack,
+                            mag_bound=args.mag_bound,
+                            no_attack=args.no_attack)
+  File "C:\Users\Starlight Anya\Documents\Github\FL_simulation\multiseed.py", line 92, in run_federation
+    out, _ = server.communicate(timeout=600)
+             ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\subprocess.py", line 1222, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\subprocess.py", line 1663, in _communicate
+    self.stdout_thread.join(self._remaining_time(endtime))
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\threading.py", line 1095, in join
+    self._handle.join(timeout)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^
+KeyboardInterrupt
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> ^C
+PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> ^C
 PS C:\Users\Starlight Anya\Documents\Github\FL_simulation>
