@@ -130,7 +130,8 @@ def tail_mean(acc, rounds, k):
     return float(np.mean([acc[r] for r in tail])) if tail else float("nan")
  
  
-def make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ss, out_convergence, out_bar):
+def make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ft_mat, ss,
+               out_convergence, out_bar):
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -140,33 +141,30 @@ def make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ss, out_convergence, out_b
               "pip install matplotlib)")
         return
 
-    none_mean = np.nanmean(none_mat, 0)
-    none_std  = np.nanstd(none_mat, 0)
-    tm_mean   = np.nanmean(tm_mat, 0)
-    tm_std    = np.nanstd(tm_mat, 0)
-    ta_mean   = np.nanmean(ta_mat, 0)
-    ta_std    = np.nanstd(ta_mat, 0)
+    none_mean = np.nanmean(none_mat, 0); none_std = np.nanstd(none_mat, 0)
+    tm_mean   = np.nanmean(tm_mat,   0); tm_std   = np.nanstd(tm_mat,   0)
+    ta_mean   = np.nanmean(ta_mat,   0); ta_std   = np.nanstd(ta_mat,   0)
+    ft_mean   = np.nanmean(ft_mat,   0); ft_std   = np.nanstd(ft_mat,   0)
+
+    COLORS = {"none": "#d62728", "tm": "#1f77b4",
+              "ta": "#2ca02c",   "ft": "#ff7f0e"}
 
     # --- figure 1: convergence band ---
-    fig1, ax1 = plt.subplots(figsize=(8, 4.5))
+    fig1, ax1 = plt.subplots(figsize=(9, 4.5))
     fig1.patch.set_facecolor("white")
-    ax1.plot(rounds_axis, none_mean, color="#d62728", lw=2,
-             label="Plain FedAvg (no defense)")
-    ax1.fill_between(rounds_axis, none_mean - none_std, none_mean + none_std,
-                     color="#d62728", alpha=0.20)
-    ax1.plot(rounds_axis, tm_mean, color="#1f77b4", lw=2,
-             label="Trimmed mean")
-    ax1.fill_between(rounds_axis, tm_mean - tm_std, tm_mean + tm_std,
-                     color="#1f77b4", alpha=0.20)
-    ax1.plot(rounds_axis, ta_mean, color="#2ca02c", lw=2,
-             label="Trust-anchored (proposed)")
-    ax1.fill_between(rounds_axis, ta_mean - ta_std, ta_mean + ta_std,
-                     color="#2ca02c", alpha=0.20)
+    for mean, std, color, label in [
+        (none_mean, none_std, COLORS["none"], "No defense (FedAvg)"),
+        (tm_mean,   tm_std,   COLORS["tm"],   "Trimmed mean"),
+        (ft_mean,   ft_std,   COLORS["ft"],   "FLTrust"),
+        (ta_mean,   ta_std,   COLORS["ta"],   "Trust-anchored (proposed)"),
+    ]:
+        ax1.plot(rounds_axis, mean, lw=2, color=color, label=label)
+        ax1.fill_between(rounds_axis, mean - std, mean + std,
+                         color=color, alpha=0.15)
     ax1.set_xlabel("FL Round", fontsize=12)
     ax1.set_ylabel("Global FBS-detection Accuracy (%)", fontsize=12)
     ax1.set_title(
-        f"Accuracy per Round  (mean \u00b1 std across {ss['n_seeds']} seeds)",
-        fontsize=11)
+        f"Accuracy per Round  (mean \u00b1 std, {ss['n_seeds']} seeds)", fontsize=11)
     ax1.set_ylim(0, 100)
     ax1.set_xticks(rounds_axis)
     ax1.legend(loc="lower right", fontsize=9, framealpha=0.9)
@@ -178,14 +176,15 @@ def make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ss, out_convergence, out_b
     print(f"  convergence plot saved -> {out_convergence}")
 
     # --- figure 2: steady-state bar chart ---
-    fig2, ax2 = plt.subplots(figsize=(5.5, 4.5))
+    fig2, ax2 = plt.subplots(figsize=(6.5, 4.5))
     fig2.patch.set_facecolor("white")
-    labels = ["No defense", "Trimmed mean", "Trust-anchored"]
-    means  = [ss["none_mean"], ss["tm_mean"], ss["ta_mean"]]
-    stds   = [ss["none_std"],  ss["tm_std"],  ss["ta_std"]]
-    bars = ax2.bar(labels, means, yerr=stds, capsize=10,
-                   color=["#d62728", "#1f77b4", "#2ca02c"], alpha=0.85,
-                   width=0.5, error_kw={"elinewidth": 1.8})
+    labels = ["No defense", "Trimmed mean", "FLTrust", "Trust-anchored"]
+    means  = [ss["none_mean"], ss["tm_mean"], ss["ft_mean"], ss["ta_mean"]]
+    stds   = [ss["none_std"],  ss["tm_std"],  ss["ft_std"],  ss["ta_std"]]
+    colors = [COLORS["none"], COLORS["tm"], COLORS["ft"], COLORS["ta"]]
+    bars = ax2.bar(labels, means, yerr=stds, capsize=8,
+                   color=colors, alpha=0.85, width=0.55,
+                   error_kw={"elinewidth": 1.8})
     ax2.set_ylabel("Steady-state Accuracy (%)", fontsize=12)
     ax2.set_title(
         f"Steady-state Summary\n(last {ss['k']} rounds, {ss['n_seeds']} seeds)",
@@ -195,7 +194,7 @@ def make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ss, out_convergence, out_b
     ax2.spines[["top", "right"]].set_visible(False)
     for b, m, s in zip(bars, means, stds):
         ax2.text(b.get_x() + b.get_width() / 2, m + s + 2.5,
-                 f"{m:.0f}\u00b1{s:.0f}%", ha="center", fontsize=10,
+                 f"{m:.0f}\u00b1{s:.0f}%", ha="center", fontsize=9,
                  fontweight="bold")
     fig2.tight_layout()
     fig2.savefig(out_bar, dpi=300, bbox_inches="tight")
@@ -211,7 +210,7 @@ def main():
     ap.add_argument("--scale", type=float, default=10.0)
     ap.add_argument("--trim", type=int, default=1)
     ap.add_argument("--attack", type=str, default="sign_flip",
-                    choices=["sign_flip", "noise"])
+                    choices=["sign_flip", "noise", "label_flip"])
     ap.add_argument("--start-seed", type=int, default=0)
     ap.add_argument("--mag-bound", type=float, default=5.0,
                     help="magnitude bound for trust-anchored aggregation")
@@ -224,8 +223,8 @@ def main():
     rounds_axis = list(range(1, args.rounds + 1))
     seeds = list(range(args.start_seed, args.start_seed + args.seeds))
 
-    none_rows, tm_rows, ta_rows = [], [], []   # per-seed per-round accuracy
-    none_ss, tm_ss, ta_ss = [], [], []         # per-seed steady-state tail means
+    none_rows, tm_rows, ta_rows, ft_rows = [], [], [], []
+    none_ss,  tm_ss,  ta_ss,  ft_ss  = [], [], [], []
 
     for si, seed in enumerate(seeds, start=1):
         print(f"\n[{si}/{len(seeds)}] seed={seed} "
@@ -235,8 +234,7 @@ def main():
                        check=True, stdout=subprocess.DEVNULL)
 
         # Each seed is an independent trial — fresh LSTM (seed=42 init) for all
-        # three defenses. This isolates the delta to the defense mechanism itself
-        # rather than accumulated training history across seeds.
+        # defenses. Isolates the delta to the defense mechanism.
         none_acc = run_federation("none", args.rounds, args.scale,
                                   args.trim, args.attack,
                                   mag_bound=args.mag_bound,
@@ -251,81 +249,83 @@ def main():
                                 args.trim, args.attack,
                                 mag_bound=args.mag_bound,
                                 no_attack=args.no_attack)
+        time.sleep(1)
+        ft_acc = run_federation("fltrust", args.rounds, args.scale,
+                                args.trim, args.attack,
+                                mag_bound=args.mag_bound,
+                                no_attack=args.no_attack)
 
         none_rows.append([none_acc.get(r, np.nan) for r in rounds_axis])
         tm_rows.append([tm_acc.get(r, np.nan) for r in rounds_axis])
         ta_rows.append([ta_acc.get(r, np.nan) for r in rounds_axis])
+        ft_rows.append([ft_acc.get(r, np.nan) for r in rounds_axis])
         n_ss = tail_mean(none_acc, args.rounds, k)
-        t_ss = tail_mean(tm_acc, args.rounds, k)
-        a_ss = tail_mean(ta_acc, args.rounds, k)
-        none_ss.append(n_ss)
-        tm_ss.append(t_ss)
-        ta_ss.append(a_ss)
-        print(f"      steady-state: no-defense {n_ss:5.1f}%  "
-              f"trimmed-mean {t_ss:5.1f}%  trust-anchored {a_ss:5.1f}%")
+        t_ss = tail_mean(tm_acc,  args.rounds, k)
+        a_ss = tail_mean(ta_acc,  args.rounds, k)
+        f_ss = tail_mean(ft_acc,  args.rounds, k)
+        none_ss.append(n_ss); tm_ss.append(t_ss)
+        ta_ss.append(a_ss);   ft_ss.append(f_ss)
+        print(f"      no-defense {n_ss:5.1f}%  trimmed {t_ss:5.1f}%  "
+              f"trust-anchored {a_ss:5.1f}%  fltrust {f_ss:5.1f}%")
  
     none_mat = np.array(none_rows, dtype=float)
     tm_mat   = np.array(tm_rows,   dtype=float)
     ta_mat   = np.array(ta_rows,   dtype=float)
+    ft_mat   = np.array(ft_rows,   dtype=float)
     none_ss  = np.array(none_ss, dtype=float)
     tm_ss    = np.array(tm_ss,   dtype=float)
     ta_ss    = np.array(ta_ss,   dtype=float)
+    ft_ss    = np.array(ft_ss,   dtype=float)
 
     ss = {
         "k": k, "n_seeds": len(seeds),
-        "none_mean": float(np.nanmean(none_ss)),
-        "none_std":  float(np.nanstd(none_ss)),
-        "tm_mean":   float(np.nanmean(tm_ss)),
-        "tm_std":    float(np.nanstd(tm_ss)),
-        "ta_mean":   float(np.nanmean(ta_ss)),
-        "ta_std":    float(np.nanstd(ta_ss)),
+        "none_mean": float(np.nanmean(none_ss)), "none_std": float(np.nanstd(none_ss)),
+        "tm_mean":   float(np.nanmean(tm_ss)),   "tm_std":   float(np.nanstd(tm_ss)),
+        "ta_mean":   float(np.nanmean(ta_ss)),   "ta_std":   float(np.nanstd(ta_ss)),
+        "ft_mean":   float(np.nanmean(ft_ss)),   "ft_std":   float(np.nanstd(ft_ss)),
     }
-    recovery_tm = ss["tm_mean"] - ss["none_mean"]
     recovery_ta = ss["ta_mean"] - ss["none_mean"]
+    recovery_ft = ss["ft_mean"] - ss["none_mean"]
 
     print("\n" + "=" * 60)
     print(f" AGGREGATE over {len(seeds)} seeds  "
           f"(attack={args.attack}, scale={args.scale}, alpha={args.alpha})")
     print("=" * 60)
-    print(f"  Steady-state accuracy (mean of per-seed tail means):")
+    print(f"  Steady-state accuracy:")
     print(f"    No defense      : {ss['none_mean']:5.1f}% \u00b1 {ss['none_std']:.1f}")
     print(f"    Trimmed mean    : {ss['tm_mean']:5.1f}% \u00b1 {ss['tm_std']:.1f}  "
-          f"(+{recovery_tm:.1f} pp)")
+          f"(+{ss['tm_mean']-ss['none_mean']:.1f} pp)")
+    print(f"    FLTrust         : {ss['ft_mean']:5.1f}% \u00b1 {ss['ft_std']:.1f}  "
+          f"(+{recovery_ft:.1f} pp)")
     print(f"    Trust-anchored  : {ss['ta_mean']:5.1f}% \u00b1 {ss['ta_std']:.1f}  "
           f"(+{recovery_ta:.1f} pp)")
-    print(f"\n  POSTER LINE:")
-    print(f"  \"Across {len(seeds)} seeds under a {args.attack} attack "
-          f"(1/{N_CLIENTS} clients compromised, non-IID),")
-    print(f"   trust-anchored aggregation held FBS-detection accuracy at "
-          f"{ss['ta_mean']:.0f}\u00b1{ss['ta_std']:.0f}%")
-    print(f"   vs {ss['tm_mean']:.0f}\u00b1{ss['tm_std']:.0f}% (trimmed mean) and "
-          f"{ss['none_mean']:.0f}\u00b1{ss['none_std']:.0f}% (no defense).\"")
 
     with open("multiseed_results.json", "w") as f:
         json.dump({
             "config": vars(args), "seeds": seeds,
             "steady_state_per_seed": {
-                "none": none_ss.tolist(),
-                "trimmed_mean": tm_ss.tolist(),
-                "trust_anchored": ta_ss.tolist(),
+                "none": none_ss.tolist(), "trimmed_mean": tm_ss.tolist(),
+                "trust_anchored": ta_ss.tolist(), "fltrust": ft_ss.tolist(),
             },
             "per_round_mean": {
                 "none": np.nanmean(none_mat, 0).tolist(),
                 "trimmed_mean": np.nanmean(tm_mat, 0).tolist(),
                 "trust_anchored": np.nanmean(ta_mat, 0).tolist(),
+                "fltrust": np.nanmean(ft_mat, 0).tolist(),
             },
             "per_round_std": {
                 "none": np.nanstd(none_mat, 0).tolist(),
                 "trimmed_mean": np.nanstd(tm_mat, 0).tolist(),
                 "trust_anchored": np.nanstd(ta_mat, 0).tolist(),
+                "fltrust": np.nanstd(ft_mat, 0).tolist(),
             },
             "aggregate": ss,
-            "recovery_tm_pp": recovery_tm,
             "recovery_ta_pp": recovery_ta,
+            "recovery_ft_pp": recovery_ft,
         }, f, indent=2)
     print(f"\n  numbers saved -> multiseed_results.json")
 
-    make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ss,
+    make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ft_mat, ss,
                "multiseed_convergence.png", "multiseed_barplot.png")
  
  

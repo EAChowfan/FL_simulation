@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--server_address", type=str, default="127.0.0.1:8080")
 parser.add_argument("--data", type=str, required=True)
 parser.add_argument("--attack", type=str, default="sign_flip",
-                    choices=["sign_flip", "noise"])
+                    choices=["sign_flip", "noise", "label_flip"])
 parser.add_argument("--scale", type=float, default=10.0)
 parser.add_argument("--vocab", type=str, default="vocab.json")
 parser.add_argument("--local-epochs", type=int, default=1)
@@ -56,6 +56,20 @@ class PoisonClient(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         model_set_params(self.model, parameters)
+
+        if args.attack == "label_flip":
+            # Stealth attack: relabel every FBS session as honest, then train
+            # normally. The update is geometrically clean (no sign flip, no
+            # scaling) so cosine-similarity checks pass — but the model is
+            # specifically trained to miss FBS attacks, which the BR probes catch.
+            y_stealth = np.where(y == 1, 0, y)
+            train_local(self.model, X, y_stealth, epochs=args.local_epochs)
+            poisoned = model_get_params(self.model)
+            l2 = float(np.sqrt(sum(np.sum(p ** 2) for p in poisoned)))
+            print(f"[Poison Client] STEALTH label_flip "
+                  f"({int((y == 1).sum())} FBS sessions relabeled) L2={l2:.3f}")
+            return poisoned, len(X), {}
+
         train_local(self.model, X, y, epochs=args.local_epochs)
         honest = model_get_params(self.model)
         if args.attack == "sign_flip":

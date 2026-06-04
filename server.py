@@ -36,7 +36,7 @@ from model import (
     build_model, encode_frame, evaluate_metrics,
     get_parameters as model_get_params,
     set_parameters as model_set_params,
-    load_vocab, predict, tokenize, MAX_LEN,
+    load_vocab, predict, tokenize, train_local, MAX_LEN,
 )
 
 warnings.filterwarnings("ignore")
@@ -44,7 +44,7 @@ warnings.filterwarnings("ignore")
 parser = argparse.ArgumentParser()
 parser.add_argument("--server_address", type=str, default="0.0.0.0:8080")
 parser.add_argument("--defense", type=str, default="none",
-                    choices=["none", "trimmed_mean", "trust_anchored"])
+                    choices=["none", "trimmed_mean", "trust_anchored", "fltrust"])
 parser.add_argument("--rounds", type=int, default=5)
 parser.add_argument("--clients", type=int, default=5,
                     help="total clients expected (honest + poison)")
@@ -219,6 +219,56 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         ]
         return [g + d for g, d in zip(global_params, aggregated_delta)]
 
+    def _fltrust_aggregate(
+        self, all_params: list, n_tensors: int
+    ) -> list:
+        """FLTrust (Cao et al. 2020): cosine similarity with server's own
+        reference update, magnitude-normalised to the server's update norm.
+        No behavioral anchor — purely geometric. Used as the Step-3 baseline
+        to show the BR-probe anchor catches what FLTrust alone misses."""
+        global_params = self._global_params
+
+        # Server computes one honest training step on the clean reference data.
+        ref_model = build_model(VOCAB_SIZE)
+        model_set_params(ref_model, global_params)
+        train_local(ref_model, X_val, y_val, epochs=1)
+        ref_params = model_get_params(ref_model)
+
+        server_delta = [r - g for r, g in zip(ref_params, global_params)]
+        server_flat  = np.concatenate([d.flatten() for d in server_delta])
+        server_norm  = float(np.linalg.norm(server_flat)) + 1e-9
+
+        client_deltas = [
+            [c - g for c, g in zip(cp, global_params)]
+            for cp in all_params
+        ]
+
+        # Cosine trust scores — ReLU so negative similarity → 0 weight.
+        cos_scores = []
+        client_norms = []
+        for delta in client_deltas:
+            flat = np.concatenate([d.flatten() for d in delta])
+            cn   = float(np.linalg.norm(flat)) + 1e-9
+            client_norms.append(cn)
+            cos  = float(np.dot(flat, server_flat)) / cn / server_norm
+            cos_scores.append(max(0.0, cos))
+
+        trust_sum = sum(cos_scores) + 1e-9
+        weights   = [s / trust_sum for s in cos_scores]
+
+        print(f"    [FLTrust cos] {[f'{s:.2f}' for s in cos_scores]}")
+        print(f"    [weights    ] {[f'{w:.2f}' for w in weights]}")
+
+        # Aggregate: each client delta normalised to server_norm, weighted by cos.
+        aggregated_delta = []
+        for t in range(n_tensors):
+            agg_t = np.zeros_like(global_params[t], dtype=float)
+            for w, cn, delta in zip(weights, client_norms, client_deltas):
+                agg_t += w * delta[t] * (server_norm / cn)
+            aggregated_delta.append(agg_t)
+
+        return [g + d for g, d in zip(global_params, aggregated_delta)]
+
     def aggregate_fit(
         self,
         server_round: int,
@@ -251,6 +301,10 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
                 sorted_arr = np.sort(stacked, axis=0)
                 kept = sorted_arr[k: n - k]
                 aggregated.append(np.mean(kept, axis=0))
+
+        elif self.defense_type == "fltrust":
+            print(f"[Round {server_round}] defense=FLTRUST ({n} clients)")
+            aggregated = self._fltrust_aggregate(all_params, n_tensors)
 
         else:  # trust_anchored
             print(f"[Round {server_round}] defense=TRUST_ANCHORED ({n} clients)")

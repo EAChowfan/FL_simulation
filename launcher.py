@@ -124,7 +124,7 @@ def main():
     ap.add_argument("--trim", type=int, default=1,
                     help="trimmed-mean trim count per end")
     ap.add_argument("--attack", type=str, default="sign_flip",
-                    choices=["sign_flip", "noise"])
+                    choices=["sign_flip", "noise", "label_flip"])
     ap.add_argument("--mag-bound", type=float, default=5.0,
                     help="magnitude bound for trust-anchored aggregation")
     ap.add_argument("--no-attack", action="store_true",
@@ -142,52 +142,63 @@ def main():
     tm_acc = run_one("trimmed_mean", args.scale, args.trim, args.attack,
                      args.mag_bound, args.no_attack)
     time.sleep(2)
+    ft_acc = run_one("fltrust", args.scale, args.trim, args.attack,
+                     args.mag_bound, args.no_attack)
+    time.sleep(2)
     ta_acc = run_one("trust_anchored", args.scale, args.trim, args.attack,
                      args.mag_bound, args.no_attack)
 
     # ---- comparison table ----
-    rounds = sorted(set(none_acc) | set(tm_acc) | set(ta_acc))
-    print(f"\n\n{'='*72}")
+    rounds = sorted(set(none_acc) | set(tm_acc) | set(ta_acc) | set(ft_acc))
+    print(f"\n\n{'='*84}")
     print(f" RESULTS  (attack={args.attack}, scale={args.scale}, "
           f"1 of {N_CLIENTS} clients poisoned)")
-    print(f"{'='*72}")
-    print(f"{'Round':>6} | {'No Defense':>12} | {'Trimmed Mean':>13} | {'Trust-Anchored':>15}")
-    print(f"{'-'*6}-+-{'-'*12}-+-{'-'*13}-+-{'-'*15}")
+    print(f"{'='*84}")
+    print(f"{'Round':>6} | {'No Defense':>12} | {'Trimmed Mean':>13} | "
+          f"{'FLTrust':>10} | {'Trust-Anchored':>15}")
+    print(f"{'-'*6}-+-{'-'*12}-+-{'-'*13}-+-{'-'*10}-+-{'-'*15}")
     for r in rounds:
         ns  = f"{none_acc[r]:6.2f}%" if r in none_acc else "      --"
         ts  = f"{tm_acc[r]:6.2f}%"   if r in tm_acc   else "      --"
+        fs  = f"{ft_acc[r]:6.2f}%"   if r in ft_acc   else "      --"
         as_ = f"{ta_acc[r]:6.2f}%"   if r in ta_acc   else "      --"
-        print(f"{r:>6} | {ns:>12} | {ts:>13} | {as_:>15}")
+        print(f"{r:>6} | {ns:>12} | {ts:>13} | {fs:>10} | {as_:>15}")
 
     K = min(10, len(rounds) - 1)
     tail    = [r for r in rounds if r != 0][-K:]
     n_tail  = np.array([none_acc[r] for r in tail if r in none_acc], dtype=float)
     t_tail  = np.array([tm_acc[r]   for r in tail if r in tm_acc],   dtype=float)
+    f_tail  = np.array([ft_acc[r]   for r in tail if r in ft_acc],   dtype=float)
     ta_tail = np.array([ta_acc[r]   for r in tail if r in ta_acc],   dtype=float)
 
     n_mean,  n_std  = float(np.mean(n_tail)),  float(np.std(n_tail))
     t_mean,  t_std  = float(np.mean(t_tail)),  float(np.std(t_tail))
+    f_mean,  f_std  = float(np.mean(f_tail)),  float(np.std(f_tail))
     ta_mean, ta_std = float(np.mean(ta_tail)), float(np.std(ta_tail))
 
-    print(f"\n  Steady-state (mean +/- std over last {len(tail)} rounds):")
+    print(f"\n  Steady-state (last {len(tail)} rounds):")
     print(f"    No defense      : {n_mean:6.2f}% +/- {n_std:.2f}")
     print(f"    Trimmed mean    : {t_mean:6.2f}% +/- {t_std:.2f}  "
           f"(+{t_mean - n_mean:.2f} pp)")
+    print(f"    FLTrust         : {f_mean:6.2f}% +/- {f_std:.2f}  "
+          f"(+{f_mean - n_mean:.2f} pp)")
     print(f"    Trust-anchored  : {ta_mean:6.2f}% +/- {ta_std:.2f}  "
           f"(+{ta_mean - n_mean:.2f} pp)")
 
     with open("results.json", "w") as f:
         json.dump({
-            "none": none_acc, "trimmed_mean": tm_acc, "trust_anchored": ta_acc,
+            "none": none_acc, "trimmed_mean": tm_acc,
+            "fltrust": ft_acc, "trust_anchored": ta_acc,
             "scale": args.scale, "attack": args.attack,
             "steady_state": {
                 "rounds_averaged": tail,
-                "none_mean":  n_mean,   "none_std":  n_std,
-                "tm_mean":    t_mean,   "tm_std":    t_std,
-                "ta_mean":    ta_mean,  "ta_std":    ta_std,
+                "none_mean":  n_mean,  "none_std":  n_std,
+                "tm_mean":    t_mean,  "tm_std":    t_std,
+                "ft_mean":    f_mean,  "ft_std":    f_std,
+                "ta_mean":    ta_mean, "ta_std":    ta_std,
             },
         }, f, indent=2)
-    print(f"\n  (saved per-round numbers + steady-state summary to results.json)")
+    print(f"\n  saved -> results.json")
  
  
 if __name__ == "__main__":
