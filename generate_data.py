@@ -62,7 +62,7 @@ import pandas as pd
 SEED = 42
 N_SESSIONS = 2500
 FBS_FRACTION = 0.40
-LABEL_NOISE = 0.05          # fraction of sessions with flipped labels
+LABEL_NOISE = 0.02          # fraction of sessions with flipped labels
 N_HONEST_CLIENTS = 4
 NON_IID_ALPHA = 1.0         # moderate non-IID; low values can starve a client
 MAX_LEN = 30                # sessions padded/truncated to this length downstream
@@ -126,16 +126,14 @@ def fbs_session():
     # combined signature: usually SKIP authentication
     if not _maybe(0.75):
         s += ["EMM_AUTH_REQ", "EMM_AUTH_RES"]
-    # security mode: null algorithms, or skipped entirely
-    r = rng.random()
-    if r < 0.55:
+    # security mode: null algorithms (BR-8) or skipped entirely (BR-31).
+    # Removed the honest-looking EMM_SMC variant — every FBS session must
+    # violate at least one 3GPP normative rule the LSTM can learn to detect.
+    if _maybe(0.65):
         s += ["RRC_SEC_MODE_CMD", "EMM_SMC_NULL", "EMM_SMC_CMP"]
-    elif r < 0.80:
-        pass
-    else:
-        s += ["EMM_SMC", "EMM_SMC_CMP"]
-    # plaintext past the security point
-    s.append("SHT0_PLAIN" if _maybe(0.80) else "SHT2_CIPHERED")
+    # else: no security mode at all (also a clear violation)
+    # plaintext past the security point — always SHT0_PLAIN for FBS (BR-25)
+    s.append("SHT0_PLAIN")
     s += ["EMM_ATTACH_ACCEPT"]
     if _maybe(0.5):
         s.append("EMM_ATTACH_CMP")
