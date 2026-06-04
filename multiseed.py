@@ -89,12 +89,21 @@ def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
              "--attack", attack, "--scale", str(scale)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
  
-    out, _ = server.communicate(timeout=600)
-    for p in procs:
-        try:
-            p.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            p.kill()
+    try:
+        out, _ = server.communicate(timeout=600)
+    except subprocess.TimeoutExpired:
+        server.kill()
+        out, _ = server.communicate()
+        raise RuntimeError(
+            f"Server timed out after 600 s for defense={defense!r}. "
+            f"Last output:\n" + "\n".join(out.splitlines()[-20:])
+        )
+    finally:
+        for p in procs:
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                p.kill()
  
     acc = {}
     for line in out.splitlines():

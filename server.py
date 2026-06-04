@@ -254,7 +254,17 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
 
         else:  # trust_anchored
             print(f"[Round {server_round}] defense=TRUST_ANCHORED ({n} clients)")
-            aggregated = self._trust_anchored_aggregate(all_params, n_tensors)
+            try:
+                aggregated = self._trust_anchored_aggregate(all_params, n_tensors)
+            except Exception as exc:
+                import traceback
+                print(f"[ERROR] _trust_anchored_aggregate failed: {exc}")
+                traceback.print_exc()
+                print("        Falling back to plain mean for this round.")
+                aggregated = [
+                    np.mean(np.stack([cp[t] for cp in all_params], axis=0), axis=0)
+                    for t in range(n_tensors)
+                ]
 
         # Store for next round's delta computation.
         self._global_params = aggregated
