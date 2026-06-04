@@ -47,12 +47,13 @@ POISON_DATA = "poison_data.csv"
 ACC_RE = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
  
  
-def run_federation(defense, rounds, scale, trim, attack, checkpoint=None):
+def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
+                   mag_bound=5.0):
     """Launch one federation; return {round: accuracy} parsed from the server."""
     cmd = [sys.executable, "server.py",
            "--server_address", SERVER_ADDR, "--defense", defense,
            "--rounds", str(rounds), "--clients", str(N_CLIENTS),
-           "--trim", str(trim)]
+           "--trim", str(trim), "--mag-bound", str(mag_bound)]
     if checkpoint:
         cmd += ["--checkpoint", checkpoint]
     server = subprocess.Popen(
@@ -197,6 +198,8 @@ def main():
     ap.add_argument("--attack", type=str, default="sign_flip",
                     choices=["sign_flip", "noise"])
     ap.add_argument("--start-seed", type=int, default=0)
+    ap.add_argument("--mag-bound", type=float, default=5.0,
+                    help="magnitude bound for trust-anchored aggregation")
     args = ap.parse_args()
 
     k = min(10, args.rounds - 1)  # tail length for steady-state
@@ -224,13 +227,16 @@ def main():
                        check=True, stdout=subprocess.DEVNULL)
 
         none_acc = run_federation("none", args.rounds, args.scale,
-                                  args.trim, args.attack, checkpoint=ckpt_none)
+                                  args.trim, args.attack, checkpoint=ckpt_none,
+                                  mag_bound=args.mag_bound)
         time.sleep(1)
         tm_acc = run_federation("trimmed_mean", args.rounds, args.scale,
-                                args.trim, args.attack, checkpoint=ckpt_tm)
+                                args.trim, args.attack, checkpoint=ckpt_tm,
+                                mag_bound=args.mag_bound)
         time.sleep(1)
         ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
-                                args.trim, args.attack, checkpoint=ckpt_ta)
+                                args.trim, args.attack, checkpoint=ckpt_ta,
+                                mag_bound=args.mag_bound)
 
         none_rows.append([none_acc.get(r, np.nan) for r in rounds_axis])
         tm_rows.append([tm_acc.get(r, np.nan) for r in rounds_axis])

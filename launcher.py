@@ -36,19 +36,20 @@ POISON_DATA = "poison_data.csv"
 ACC_RE = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
  
  
-def run_one(defense, scale, trim, attack):
+def run_one(defense, scale, trim, attack, mag_bound=5.0):
     """Run a single federation and return {round: accuracy} parsed from server."""
     print(f"\n{'='*60}")
     print(f" RUNNING federation  ->  defense = {defense.upper()}")
     print(f"{'='*60}")
- 
+
     server = subprocess.Popen(
         [sys.executable, "server.py",
          "--server_address", SERVER_ADDR,
          "--defense", defense,
          "--rounds", str(ROUNDS),
          "--clients", str(N_CLIENTS),
-         "--trim", str(trim)],
+         "--trim", str(trim),
+         "--mag-bound", str(mag_bound)],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
     # Wait until the server socket is accepting connections (up to 15 s).
@@ -115,6 +116,8 @@ def main():
                     help="trimmed-mean trim count per end")
     ap.add_argument("--attack", type=str, default="sign_flip",
                     choices=["sign_flip", "noise"])
+    ap.add_argument("--mag-bound", type=float, default=5.0,
+                    help="magnitude bound for trust-anchored aggregation")
     args = ap.parse_args()
  
     import os
@@ -122,11 +125,14 @@ def main():
         print("Generating dataset (NAS+RRC sequence format)...")
         subprocess.run([sys.executable, "generate_data.py"], check=True)
  
-    none_acc = run_one("none", args.scale, args.trim, args.attack)
+    none_acc = run_one("none", args.scale, args.trim, args.attack,
+                       args.mag_bound)
     time.sleep(2)
-    tm_acc = run_one("trimmed_mean", args.scale, args.trim, args.attack)
+    tm_acc = run_one("trimmed_mean", args.scale, args.trim, args.attack,
+                     args.mag_bound)
     time.sleep(2)
-    ta_acc = run_one("trust_anchored", args.scale, args.trim, args.attack)
+    ta_acc = run_one("trust_anchored", args.scale, args.trim, args.attack,
+                     args.mag_bound)
 
     # ---- comparison table ----
     rounds = sorted(set(none_acc) | set(tm_acc) | set(ta_acc))
