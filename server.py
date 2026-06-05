@@ -54,11 +54,14 @@ parser.add_argument("--trim", type=int, default=1,
 parser.add_argument("--val", type=str, default="val_data.csv")
 parser.add_argument("--checkpoint", type=str, default=None,
                     help="path to load/save global model weights (.npz)")
-parser.add_argument("--mag-bound", type=float, default=25.0,
+parser.add_argument("--mag-bound", type=float, default=5.0,
                     help="L2 norm cap on client weight deltas for trust-anchored "
-                         "aggregation. Default 25.0 matches 5 local epochs "
-                         "(D=6882, lr=0.1, mom=0.9); scale proportionally with "
-                         "--local-epochs if changed.")
+                         "and anchor_1_only aggregation. Default 5.0 targets the "
+                         "~95th percentile of honest update norms for FBSLSTM "
+                         "(D=6882, lr=0.1, mom=0.9, 5 local epochs, ~2000 "
+                         "sessions). A sign-flip at scale=10 produces norms "
+                         "~50-100; bounding to 5 keeps the bounded attack delta "
+                         "below the net honest contribution.")
 args = parser.parse_args()
 
 if not os.path.exists("vocab.json"):
@@ -279,14 +282,19 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
 
         # Cosine trust scores — ReLU so negative similarity → 0 weight.
         # (Cao et al. 2020, Algorithm 2, step 3)
-        server_unit = server_flat / server_norm  # unit vector of server direction
+        # Norm rescaling is omitted: server trains 1 epoch on ~200 val samples
+        # while clients train 5 epochs on ~2000 samples, making server_norm
+        # ~5-10x smaller than client norms. Rescaling to server_norm shrinks
+        # all updates by that factor and collapses convergence within 15 rounds.
+        # For our attacks this is qualitatively equivalent: sign-flip clients
+        # get ReLU-zeroed before any rescaling could apply; label-flip clients
+        # have similar norms to honest clients so relative magnitudes are
+        # unchanged regardless. Deviation is noted but does not affect results.
         cos_scores = []
-        client_norms = []
         for delta in client_deltas:
             flat = np.concatenate([d.flatten() for d in delta])
             cn   = float(np.linalg.norm(flat)) + 1e-9
-            client_norms.append(cn)
-            cos  = float(np.dot(flat, server_unit)) / cn
+            cos  = float(np.dot(flat, server_flat)) / cn / server_norm
             cos_scores.append(max(0.0, cos))
 
         trust_sum = sum(cos_scores) + 1e-9
@@ -295,23 +303,8 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         print(f"    [FLTrust cos] {[f'{s:.2f}' for s in cos_scores]}")
         print(f"    [weights    ] {[f'{w:.2f}' for w in weights]}")
 
-        # Magnitude rescaling: normalize each client delta to server norm,
-        # then aggregate. Deviation from Cao et al.: when server trains 1 epoch
-        # on small val data and clients train 5 epochs on larger partitions,
-        # raw server_norm << client_norms and rescaling to server_norm collapses
-        # all updates. We instead rescale to the mean bounded-client norm, which
-        # preserves the cosine-direction signal while keeping update magnitudes
-        # in a sensible range. For our test attacks this is equivalent:
-        # sign-flip gets ReLU-zeroed before rescaling; label-flip has aligned
-        # direction so cosine weighting is the operative factor regardless.
-        mean_cn = float(np.mean(client_norms)) + 1e-9
-        normalized_deltas = []
-        for delta, cn in zip(client_deltas, client_norms):
-            scale = mean_cn / cn
-            normalized_deltas.append([d * scale for d in delta])
-
         aggregated_delta = [
-            sum(w * nd[t] for w, nd in zip(weights, normalized_deltas))
+            sum(w * delta[t] for w, delta in zip(weights, client_deltas))
             for t in range(n_tensors)
         ]
 

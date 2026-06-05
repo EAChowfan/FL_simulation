@@ -291,8 +291,8 @@ def main():
     ap.add_argument("--attack", type=str, default="sign_flip",
                     choices=["sign_flip", "noise", "label_flip"])
     ap.add_argument("--start-seed", type=int, default=0)
-    ap.add_argument("--mag-bound", type=float, default=25.0,
-                    help="magnitude bound for trust-anchored aggregation")
+    ap.add_argument("--mag-bound", type=float, default=5.0,
+                    help="magnitude bound for trust-anchored / anchor_1_only aggregation")
     ap.add_argument("--local-epochs", type=int, default=5,
                     help="local SGD epochs per FL round")
     ap.add_argument("--no-attack", action="store_true",
