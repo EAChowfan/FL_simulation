@@ -60,7 +60,7 @@ import pandas as pd
 # Config
 # ----------------------------------------------------------------------
 SEED = 42
-N_SESSIONS = 2500
+N_SESSIONS = 10000
 FBS_FRACTION = 0.40
 LABEL_NOISE = 0.02          # fraction of sessions with flipped labels
 N_HONEST_CLIENTS = 4
