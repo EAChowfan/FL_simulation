@@ -44,7 +44,8 @@ warnings.filterwarnings("ignore")
 parser = argparse.ArgumentParser()
 parser.add_argument("--server_address", type=str, default="0.0.0.0:8080")
 parser.add_argument("--defense", type=str, default="none",
-                    choices=["none", "trimmed_mean", "trust_anchored", "fltrust"])
+                    choices=["none", "trimmed_mean", "trust_anchored",
+                             "fltrust", "anchor_1_only"])
 parser.add_argument("--rounds", type=int, default=5)
 parser.add_argument("--clients", type=int, default=5,
                     help="total clients expected (honest + poison)")
@@ -221,6 +222,37 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         ]
         return [g + d for g, d in zip(global_params, aggregated_delta)]
 
+    def _anchor1_aggregate(
+        self, all_params: list, n_tensors: int
+    ) -> list:
+        """Anchor 1 only: magnitude bounding + uniform weights.
+        No cosine direction check, no behavioral BR probes.
+        Ablation arm that isolates whether Anchor 2 (BR scoring) adds value
+        over pure magnitude bounding against directional and stealth attacks."""
+        global_params = self._global_params
+        M = args.mag_bound
+        client_deltas = [
+            [c - g for c, g in zip(cp, global_params)]
+            for cp in all_params
+        ]
+        bounded_deltas = []
+        raw_norms = []
+        for delta in client_deltas:
+            norm = float(np.sqrt(sum(np.sum(d ** 2) for d in delta)))
+            raw_norms.append(norm)
+            if norm > M:
+                bounded_deltas.append([d * (M / norm) for d in delta])
+            else:
+                bounded_deltas.append(delta)
+        print(f"    [delta norms] {[f'{n:.2f}' for n in raw_norms]}  "
+              f"(bound={M})")
+        w = 1.0 / len(bounded_deltas)
+        aggregated_delta = [
+            sum(w * bd[t] for bd in bounded_deltas)
+            for t in range(n_tensors)
+        ]
+        return [g + d for g, d in zip(global_params, aggregated_delta)]
+
     def _fltrust_aggregate(
         self, all_params: list, n_tensors: int
     ) -> list:
@@ -246,11 +278,15 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         ]
 
         # Cosine trust scores — ReLU so negative similarity → 0 weight.
+        # (Cao et al. 2020, Algorithm 2, step 3)
+        server_unit = server_flat / server_norm  # unit vector of server direction
         cos_scores = []
+        client_norms = []
         for delta in client_deltas:
             flat = np.concatenate([d.flatten() for d in delta])
             cn   = float(np.linalg.norm(flat)) + 1e-9
-            cos  = float(np.dot(flat, server_flat)) / cn / server_norm
+            client_norms.append(cn)
+            cos  = float(np.dot(flat, server_unit)) / cn
             cos_scores.append(max(0.0, cos))
 
         trust_sum = sum(cos_scores) + 1e-9
@@ -259,11 +295,23 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         print(f"    [FLTrust cos] {[f'{s:.2f}' for s in cos_scores]}")
         print(f"    [weights    ] {[f'{w:.2f}' for w in weights]}")
 
-        # Aggregate: cosine-weighted average of client deltas, no magnitude
-        # rescaling. Rescaling caused oscillation when server epochs ≠ client
-        # epochs (server reference magnitude ≠ client update magnitude).
+        # Magnitude rescaling: normalize each client delta to server norm,
+        # then aggregate. Deviation from Cao et al.: when server trains 1 epoch
+        # on small val data and clients train 5 epochs on larger partitions,
+        # raw server_norm << client_norms and rescaling to server_norm collapses
+        # all updates. We instead rescale to the mean bounded-client norm, which
+        # preserves the cosine-direction signal while keeping update magnitudes
+        # in a sensible range. For our test attacks this is equivalent:
+        # sign-flip gets ReLU-zeroed before rescaling; label-flip has aligned
+        # direction so cosine weighting is the operative factor regardless.
+        mean_cn = float(np.mean(client_norms)) + 1e-9
+        normalized_deltas = []
+        for delta, cn in zip(client_deltas, client_norms):
+            scale = mean_cn / cn
+            normalized_deltas.append([d * scale for d in delta])
+
         aggregated_delta = [
-            sum(w * delta[t] for w, delta in zip(weights, client_deltas))
+            sum(w * nd[t] for w, nd in zip(weights, normalized_deltas))
             for t in range(n_tensors)
         ]
 
@@ -305,6 +353,10 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         elif self.defense_type == "fltrust":
             print(f"[Round {server_round}] defense=FLTRUST ({n} clients)")
             aggregated = self._fltrust_aggregate(all_params, n_tensors)
+
+        elif self.defense_type == "anchor_1_only":
+            print(f"[Round {server_round}] defense=ANCHOR_1_ONLY ({n} clients)")
+            aggregated = self._anchor1_aggregate(all_params, n_tensors)
 
         else:  # trust_anchored
             print(f"[Round {server_round}] defense=TRUST_ANCHORED ({n} clients)")
