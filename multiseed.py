@@ -36,9 +36,30 @@ import socket
 import subprocess
 import sys
 import time
- 
+
 import numpy as np
- 
+
+LOG_FILE = "log.txt"
+
+
+class _Tee:
+    """Writes every print() call to both stdout and log.txt."""
+    def __init__(self, path):
+        self._file = open(path, "w", buffering=1, encoding="utf-8")
+        self._stdout = sys.stdout
+
+    def write(self, data):
+        self._stdout.write(data)
+        self._file.write(data)
+
+    def flush(self):
+        self._stdout.flush()
+        self._file.flush()
+
+    def close(self):
+        self._file.close()
+
+
 SERVER_ADDR = "127.0.0.1:8080"
 N_CLIENTS = 5
 HONEST_DATA = [f"client{i}_data.csv" for i in range(1, 5)]
@@ -223,6 +244,9 @@ def main():
                          "shows baseline accuracy without any attack")
     args = ap.parse_args()
 
+    tee = _Tee(LOG_FILE)
+    sys.stdout = tee
+
     k = min(10, args.rounds - 1)  # tail length for steady-state
     rounds_axis = list(range(1, args.rounds + 1))
     seeds = list(range(args.start_seed, args.start_seed + args.seeds))
@@ -335,8 +359,12 @@ def main():
 
     make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ft_mat, ss,
                "multiseed_convergence.png", "multiseed_barplot.png")
- 
- 
+
+    sys.stdout = tee._stdout
+    tee.close()
+    print(f"  log saved -> {LOG_FILE}")
+
+
 if __name__ == "__main__":
     main()
  
