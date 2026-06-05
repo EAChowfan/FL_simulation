@@ -1,74 +1,14 @@
-PS C:\Users\Starlight Anya\Documents\Github\FL_simulation> python multiseed.py --seeds 20 --alpha 2.0 --attack label_flip --rounds 15 --local-epochs 5
 
-[1/20] seed=0 (alpha=2.0, rounds=15) ...
-      no-defense  90.6%  trimmed  98.3%  trust-anchored  94.3%  fltrust  55.8%
+[1/20] seed=0 (alpha=100.0, rounds=15) ...
+      no-defense  94.4%  trimmed  98.3%  trust-anchored  97.4%  fltrust  66.0%
 
-[2/20] seed=1 (alpha=2.0, rounds=15) ...
-      no-defense  63.4%  trimmed  57.6%  trust-anchored  98.1%  fltrust  51.9%
+[2/20] seed=1 (alpha=100.0, rounds=15) ...
+      no-defense  98.2%  trimmed  98.2%  trust-anchored  98.2%  fltrust  82.7%
 
-[3/20] seed=2 (alpha=2.0, rounds=15) ...
-      no-defense  97.8%  trimmed  88.6%  trust-anchored  98.2%  fltrust  98.2%
+[3/20] seed=2 (alpha=100.0, rounds=15) ...
+      no-defense  98.2%  trimmed  94.9%  trust-anchored  98.2%  fltrust  98.2%
 
-[4/20] seed=3 (alpha=2.0, rounds=15) ...
-      no-defense  93.5%  trimmed  86.5%  trust-anchored  97.7%  fltrust  56.2%
+[4/20] seed=3 (alpha=100.0, rounds=15) ...
+      no-defense  97.7%  trimmed  91.9%  trust-anchored  97.7%  fltrust  62.0%
 
-[5/20] seed=4 (alpha=2.0, rounds=15) ...
-      no-defense  57.9%  trimmed  98.4%  trust-anchored  98.4%  fltrust  50.0%
-
-[6/20] seed=5 (alpha=2.0, rounds=15) ...
-      no-defense  94.3%  trimmed  97.8%  trust-anchored  97.8%  fltrust  60.8%
-
-[7/20] seed=6 (alpha=2.0, rounds=15) ...
-      no-defense  90.4%  trimmed  88.4%  trust-anchored  97.7%  fltrust  59.8%
-
-[8/20] seed=7 (alpha=2.0, rounds=15) ...
-      no-defense  71.0%  trimmed  98.0%  trust-anchored  92.9%  fltrust  57.7%
-
-[9/20] seed=8 (alpha=2.0, rounds=15) ...
-      no-defense  68.1%  trimmed  68.1%  trust-anchored  90.4%  fltrust  71.3%
-
-[10/20] seed=9 (alpha=2.0, rounds=15) ...
-      no-defense  97.6%  trimmed  98.2%  trust-anchored  96.4%  fltrust  79.1%
-
-[11/20] seed=10 (alpha=2.0, rounds=15) ...
-      no-defense  62.0%  trimmed  98.3%  trust-anchored  94.7%  fltrust  50.0%
-
-[12/20] seed=11 (alpha=2.0, rounds=15) ...
-      no-defense  90.4%  trimmed  57.7%  trust-anchored  98.1%  fltrust  50.0%
-
-[13/20] seed=12 (alpha=2.0, rounds=15) ...
-      no-defense  94.2%  trimmed  97.8%  trust-anchored  97.8%  fltrust  58.7%
-
-[14/20] seed=13 (alpha=2.0, rounds=15) ...
-      no-defense  95.4%  trimmed  98.0%  trust-anchored  98.0%  fltrust  50.0%
-
-[15/20] seed=14 (alpha=2.0, rounds=15) ...
-      no-defense  91.2%  trimmed  94.3%  trust-anchored  98.0%  fltrust  69.8%
-
-[16/20] seed=15 (alpha=2.0, rounds=15) ...
-      no-defense  60.8%  trimmed  94.5%  trust-anchored  98.2%  fltrust  52.2%
-
-[17/20] seed=16 (alpha=2.0, rounds=15) ...
-      no-defense  96.1%  trimmed  97.8%  trust-anchored  97.8%  fltrust  50.0%
-
-[18/20] seed=17 (alpha=2.0, rounds=15) ...
-      no-defense  98.0%  trimmed  98.8%  trust-anchored  92.9%  fltrust  83.3%
-
-[19/20] seed=18 (alpha=2.0, rounds=15) ...
-      no-defense  69.4%  trimmed  84.5%  trust-anchored  92.0%  fltrust  56.1%
-
-[20/20] seed=19 (alpha=2.0, rounds=15) ...
-      no-defense  98.2%  trimmed  86.8%  trust-anchored  90.6%  fltrust  65.7%
-
-============================================================
- AGGREGATE over 20 seeds  (attack=label_flip, scale=10.0, alpha=2.0)
-============================================================
-  Steady-state accuracy:
-    No defense      :  84.0% ± 14.6
-    Trimmed mean    :  89.4% ± 12.9  (+5.4 pp)
-    FLTrust         :  61.3% ± 12.8  (+-22.7 pp)
-    Trust-anchored  :  96.0% ± 2.7  (+12.0 pp)
-
-  numbers saved -> multiseed_results.json
-  convergence plot saved -> multiseed_convergence.png
-  bar chart saved       -> multiseed_barplot.png
+[5/20] seed=4 (alpha=100.0, rounds=15) ...
