@@ -64,7 +64,10 @@ SERVER_ADDR = "127.0.0.1:8080"
 N_CLIENTS = 5
 HONEST_DATA = [f"client{i}_data.csv" for i in range(1, 5)]
 POISON_DATA = "poison_data.csv"
-ACC_RE = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
+ACC_RE    = re.compile(r"\[Round (\d+)\].*VALIDATION accuracy =\s*([\d.]+)%")
+RECALL_RE = re.compile(r"recall=\s*([\d.]+)%")
+F1_RE     = re.compile(r"\bF1=\s*([\d.]+)%")
+PREC_RE   = re.compile(r"precision=\s*([\d.]+)%")
  
  
 def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
@@ -128,13 +131,30 @@ def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
             except subprocess.TimeoutExpired:
                 p.kill()
  
-    acc = {}
+    metrics = {}
+    current_round = None
     for line in out.splitlines():
         m = ACC_RE.search(line)
         if m:
-            acc[int(m.group(1))] = float(m.group(2))
+            current_round = int(m.group(1))
+            metrics[current_round] = {
+                "acc": float(m.group(2)),
+                "recall": float("nan"),
+                "f1": float("nan"),
+                "precision": float("nan"),
+            }
+        elif current_round is not None:
+            mr = RECALL_RE.search(line)
+            mf = F1_RE.search(line)
+            mp = PREC_RE.search(line)
+            if mr:
+                metrics[current_round]["recall"] = float(mr.group(1))
+            if mf:
+                metrics[current_round]["f1"] = float(mf.group(1))
+            if mp:
+                metrics[current_round]["precision"] = float(mp.group(1))
 
-    if not acc:
+    if not metrics:
         print("\n[ERROR] No accuracy lines matched in server output.")
         print(f"        Expected pattern: {ACC_RE.pattern}")
         print("        Last 20 lines of server output:")
@@ -145,16 +165,17 @@ def run_federation(defense, rounds, scale, trim, attack, checkpoint=None,
             "check that server.py log format matches ACC_RE above"
         )
 
-    return acc
+    return metrics
  
  
-def tail_mean(acc, rounds, k):
-    tail = [r for r in sorted(acc) if r != 0][-k:]
-    return float(np.mean([acc[r] for r in tail])) if tail else float("nan")
+def tail_mean(metrics, rounds, k, key="acc"):
+    tail = [r for r in sorted(metrics) if r != 0][-k:]
+    return float(np.mean([metrics[r][key] for r in tail])) if tail else float("nan")
  
  
-def make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ft_mat, ss,
-               out_convergence, out_bar):
+def make_plots(rounds_axis, none_acc_mat, tm_acc_mat, ta_acc_mat, ft_acc_mat,
+               none_rec_mat, tm_rec_mat, ta_rec_mat, ft_rec_mat,
+               ss, out_convergence, out_recall, out_bar):
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -164,65 +185,83 @@ def make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ft_mat, ss,
               "pip install matplotlib)")
         return
 
-    none_mean = np.nanmean(none_mat, 0); none_std = np.nanstd(none_mat, 0)
-    tm_mean   = np.nanmean(tm_mat,   0); tm_std   = np.nanstd(tm_mat,   0)
-    ta_mean   = np.nanmean(ta_mat,   0); ta_std   = np.nanstd(ta_mat,   0)
-    ft_mean   = np.nanmean(ft_mat,   0); ft_std   = np.nanstd(ft_mat,   0)
-
     COLORS = {"none": "#d62728", "tm": "#1f77b4",
               "ta": "#2ca02c",   "ft": "#ff7f0e"}
+    SERIES = [
+        ("none", "No defense (FedAvg)"),
+        ("tm",   "Trimmed mean"),
+        ("ft",   "FLTrust"),
+        ("ta",   "Trust-anchored (proposed)"),
+    ]
 
-    # --- figure 1: convergence band ---
+    def _band_plot(ax, mats, ylabel, title):
+        for (key, label), mat in zip(SERIES, mats):
+            mean = np.nanmean(mat, 0)
+            std  = np.nanstd(mat,  0)
+            ax.plot(rounds_axis, mean, lw=2, color=COLORS[key], label=label)
+            ax.fill_between(rounds_axis, mean - std, mean + std,
+                            color=COLORS[key], alpha=0.15)
+        ax.set_xlabel("FL Round", fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=11)
+        ax.set_ylim(0, 105)
+        ax.set_xticks(rounds_axis)
+        ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
+        ax.grid(alpha=0.3, linestyle=":")
+        ax.spines[["top", "right"]].set_visible(False)
+
+    acc_mats = [none_acc_mat, tm_acc_mat, ft_acc_mat, ta_acc_mat]
+    rec_mats = [none_rec_mat, tm_rec_mat, ft_rec_mat, ta_rec_mat]
+
+    # --- figure 1: accuracy convergence ---
     fig1, ax1 = plt.subplots(figsize=(9, 4.5))
     fig1.patch.set_facecolor("white")
-    for mean, std, color, label in [
-        (none_mean, none_std, COLORS["none"], "No defense (FedAvg)"),
-        (tm_mean,   tm_std,   COLORS["tm"],   "Trimmed mean"),
-        (ft_mean,   ft_std,   COLORS["ft"],   "FLTrust"),
-        (ta_mean,   ta_std,   COLORS["ta"],   "Trust-anchored (proposed)"),
-    ]:
-        ax1.plot(rounds_axis, mean, lw=2, color=color, label=label)
-        ax1.fill_between(rounds_axis, mean - std, mean + std,
-                         color=color, alpha=0.15)
-    ax1.set_xlabel("FL Round", fontsize=12)
-    ax1.set_ylabel("Global FBS-detection Accuracy (%)", fontsize=12)
-    ax1.set_title(
-        f"Accuracy per Round  (mean \u00b1 std, {ss['n_seeds']} seeds)", fontsize=11)
-    ax1.set_ylim(0, 100)
-    ax1.set_xticks(rounds_axis)
-    ax1.legend(loc="lower right", fontsize=9, framealpha=0.9)
-    ax1.grid(alpha=0.3, linestyle=":")
-    ax1.spines[["top", "right"]].set_visible(False)
+    _band_plot(ax1, acc_mats, "FBS-Detection Accuracy (%)",
+               f"Accuracy per Round  (mean \u00b1 std, {ss['n_seeds']} seeds)")
     fig1.tight_layout()
     fig1.savefig(out_convergence, dpi=300, bbox_inches="tight")
     plt.close(fig1)
-    print(f"  convergence plot saved -> {out_convergence}")
+    print(f"  accuracy convergence  -> {out_convergence}")
 
-    # --- figure 2: steady-state bar chart ---
-    fig2, ax2 = plt.subplots(figsize=(6.5, 4.5))
+    # --- figure 2: recall convergence (the key plot for label_flip) ---
+    fig2, ax2 = plt.subplots(figsize=(9, 4.5))
     fig2.patch.set_facecolor("white")
-    labels = ["No defense", "Trimmed mean", "FLTrust", "Trust-anchored"]
-    means  = [ss["none_mean"], ss["tm_mean"], ss["ft_mean"], ss["ta_mean"]]
-    stds   = [ss["none_std"],  ss["tm_std"],  ss["ft_std"],  ss["ta_std"]]
-    colors = [COLORS["none"], COLORS["tm"], COLORS["ft"], COLORS["ta"]]
-    bars = ax2.bar(labels, means, yerr=stds, capsize=8,
+    _band_plot(ax2, rec_mats, "FBS Detection Recall (%)",
+               f"Recall per Round  (mean \u00b1 std, {ss['n_seeds']} seeds)\n"
+               f"Recall = TP / (TP + FN)  \u2014  missed attacks drive this down")
+    fig2.tight_layout()
+    fig2.savefig(out_recall, dpi=300, bbox_inches="tight")
+    plt.close(fig2)
+    print(f"  recall convergence    -> {out_recall}")
+
+    # --- figure 3: steady-state F1 bar chart ---
+    fig3, ax3 = plt.subplots(figsize=(6.5, 4.5))
+    fig3.patch.set_facecolor("white")
+    bar_labels = ["No defense", "Trimmed mean", "FLTrust", "Trust-anchored"]
+    f1_means = [ss["none_f1_mean"], ss["tm_f1_mean"],
+                ss["ft_f1_mean"],   ss["ta_f1_mean"]]
+    f1_stds  = [ss["none_f1_std"],  ss["tm_f1_std"],
+                ss["ft_f1_std"],    ss["ta_f1_std"]]
+    colors   = [COLORS["none"], COLORS["tm"], COLORS["ft"], COLORS["ta"]]
+    bars = ax3.bar(bar_labels, f1_means, yerr=f1_stds, capsize=8,
                    color=colors, alpha=0.85, width=0.55,
                    error_kw={"elinewidth": 1.8})
-    ax2.set_ylabel("Steady-state Accuracy (%)", fontsize=12)
-    ax2.set_title(
-        f"Steady-state Summary\n(last {ss['k']} rounds, {ss['n_seeds']} seeds)",
-        fontsize=11)
-    ax2.set_ylim(0, 110)
-    ax2.grid(alpha=0.3, axis="y", linestyle=":")
-    ax2.spines[["top", "right"]].set_visible(False)
-    for b, m, s in zip(bars, means, stds):
-        ax2.text(b.get_x() + b.get_width() / 2, m + s + 2.5,
+    ax3.set_ylabel("Steady-state F1 Score (%)", fontsize=12)
+    ax3.set_title(
+        f"F1 Score Summary  (last {ss['k']} rounds, {ss['n_seeds']} seeds)\n"
+        f"F1 balances precision and recall \u2014 accuracy can hide recall collapse",
+        fontsize=10)
+    ax3.set_ylim(0, 115)
+    ax3.grid(alpha=0.3, axis="y", linestyle=":")
+    ax3.spines[["top", "right"]].set_visible(False)
+    for b, m, s in zip(bars, f1_means, f1_stds):
+        ax3.text(b.get_x() + b.get_width() / 2, m + s + 2.5,
                  f"{m:.0f}\u00b1{s:.0f}%", ha="center", fontsize=9,
                  fontweight="bold")
-    fig2.tight_layout()
-    fig2.savefig(out_bar, dpi=300, bbox_inches="tight")
-    plt.close(fig2)
-    print(f"  bar chart saved       -> {out_bar}")
+    fig3.tight_layout()
+    fig3.savefig(out_bar, dpi=300, bbox_inches="tight")
+    plt.close(fig3)
+    print(f"  F1 bar chart          -> {out_bar}")
  
  
 def main():
@@ -251,8 +290,15 @@ def main():
     rounds_axis = list(range(1, args.rounds + 1))
     seeds = list(range(args.start_seed, args.start_seed + args.seeds))
 
+    # accuracy matrices
     none_rows, tm_rows, ta_rows, ft_rows = [], [], [], []
-    none_ss,  tm_ss,  ta_ss,  ft_ss  = [], [], [], []
+    none_ss,   tm_ss,   ta_ss,   ft_ss   = [], [], [], []
+    # recall matrices
+    none_rec_rows, tm_rec_rows, ta_rec_rows, ft_rec_rows = [], [], [], []
+    none_rec_ss,   tm_rec_ss,   ta_rec_ss,   ft_rec_ss   = [], [], [], []
+    # F1 matrices
+    none_f1_rows, tm_f1_rows, ta_f1_rows, ft_f1_rows = [], [], [], []
+    none_f1_ss,   tm_f1_ss,   ta_f1_ss,   ft_f1_ss   = [], [], [], []
 
     for si, seed in enumerate(seeds, start=1):
         print(f"\n[{si}/{len(seeds)}] seed={seed} "
@@ -261,60 +307,109 @@ def main():
                         "--alpha", str(args.alpha), "--seed", str(seed)],
                        check=True, stdout=subprocess.DEVNULL)
 
-        # Each seed is an independent trial — fresh LSTM (seed=42 init) for all
-        # defenses. Isolates the delta to the defense mechanism.
-        none_acc = run_federation("none", args.rounds, args.scale,
-                                  args.trim, args.attack,
-                                  mag_bound=args.mag_bound,
-                                  no_attack=args.no_attack,
-                                  local_epochs=args.local_epochs)
-        time.sleep(1)
-        tm_acc = run_federation("trimmed_mean", args.rounds, args.scale,
+        none_m = run_federation("none", args.rounds, args.scale,
                                 args.trim, args.attack,
                                 mag_bound=args.mag_bound,
                                 no_attack=args.no_attack,
                                 local_epochs=args.local_epochs)
         time.sleep(1)
-        ta_acc = run_federation("trust_anchored", args.rounds, args.scale,
-                                args.trim, args.attack,
-                                mag_bound=args.mag_bound,
-                                no_attack=args.no_attack,
-                                local_epochs=args.local_epochs)
+        tm_m = run_federation("trimmed_mean", args.rounds, args.scale,
+                              args.trim, args.attack,
+                              mag_bound=args.mag_bound,
+                              no_attack=args.no_attack,
+                              local_epochs=args.local_epochs)
         time.sleep(1)
-        ft_acc = run_federation("fltrust", args.rounds, args.scale,
-                                args.trim, args.attack,
-                                mag_bound=args.mag_bound,
-                                no_attack=args.no_attack,
-                                local_epochs=args.local_epochs)
+        ta_m = run_federation("trust_anchored", args.rounds, args.scale,
+                              args.trim, args.attack,
+                              mag_bound=args.mag_bound,
+                              no_attack=args.no_attack,
+                              local_epochs=args.local_epochs)
+        time.sleep(1)
+        ft_m = run_federation("fltrust", args.rounds, args.scale,
+                              args.trim, args.attack,
+                              mag_bound=args.mag_bound,
+                              no_attack=args.no_attack,
+                              local_epochs=args.local_epochs)
 
-        none_rows.append([none_acc.get(r, np.nan) for r in rounds_axis])
-        tm_rows.append([tm_acc.get(r, np.nan) for r in rounds_axis])
-        ta_rows.append([ta_acc.get(r, np.nan) for r in rounds_axis])
-        ft_rows.append([ft_acc.get(r, np.nan) for r in rounds_axis])
-        n_ss = tail_mean(none_acc, args.rounds, k)
-        t_ss = tail_mean(tm_acc,  args.rounds, k)
-        a_ss = tail_mean(ta_acc,  args.rounds, k)
-        f_ss = tail_mean(ft_acc,  args.rounds, k)
+        def _row(m, key): return [m.get(r, {}).get(key, np.nan) for r in rounds_axis]
+
+        none_rows.append(_row(none_m, "acc")); tm_rows.append(_row(tm_m, "acc"))
+        ta_rows.append(_row(ta_m,  "acc"));   ft_rows.append(_row(ft_m, "acc"))
+        none_rec_rows.append(_row(none_m, "recall")); tm_rec_rows.append(_row(tm_m, "recall"))
+        ta_rec_rows.append(_row(ta_m,  "recall"));   ft_rec_rows.append(_row(ft_m, "recall"))
+        none_f1_rows.append(_row(none_m, "f1")); tm_f1_rows.append(_row(tm_m, "f1"))
+        ta_f1_rows.append(_row(ta_m,  "f1"));   ft_f1_rows.append(_row(ft_m, "f1"))
+
+        n_ss  = tail_mean(none_m, args.rounds, k, "acc")
+        t_ss  = tail_mean(tm_m,   args.rounds, k, "acc")
+        a_ss  = tail_mean(ta_m,   args.rounds, k, "acc")
+        f_ss  = tail_mean(ft_m,   args.rounds, k, "acc")
+        n_rec = tail_mean(none_m, args.rounds, k, "recall")
+        t_rec = tail_mean(tm_m,   args.rounds, k, "recall")
+        a_rec = tail_mean(ta_m,   args.rounds, k, "recall")
+        f_rec = tail_mean(ft_m,   args.rounds, k, "recall")
+        n_f1  = tail_mean(none_m, args.rounds, k, "f1")
+        t_f1  = tail_mean(tm_m,   args.rounds, k, "f1")
+        a_f1  = tail_mean(ta_m,   args.rounds, k, "f1")
+        f_f1  = tail_mean(ft_m,   args.rounds, k, "f1")
+
         none_ss.append(n_ss); tm_ss.append(t_ss)
         ta_ss.append(a_ss);   ft_ss.append(f_ss)
-        print(f"      no-defense {n_ss:5.1f}%  trimmed {t_ss:5.1f}%  "
-              f"trust-anchored {a_ss:5.1f}%  fltrust {f_ss:5.1f}%")
+        none_rec_ss.append(n_rec); tm_rec_ss.append(t_rec)
+        ta_rec_ss.append(a_rec);   ft_rec_ss.append(f_rec)
+        none_f1_ss.append(n_f1); tm_f1_ss.append(t_f1)
+        ta_f1_ss.append(a_f1);   ft_f1_ss.append(f_f1)
+
+        print(f"      no-defense  acc={n_ss:.1f}% rec={n_rec:.1f}% f1={n_f1:.1f}%")
+        print(f"      trimmed     acc={t_ss:.1f}% rec={t_rec:.1f}% f1={t_f1:.1f}%")
+        print(f"      trust-anch  acc={a_ss:.1f}% rec={a_rec:.1f}% f1={a_f1:.1f}%")
+        print(f"      fltrust     acc={f_ss:.1f}% rec={f_rec:.1f}% f1={f_f1:.1f}%")
  
-    none_mat = np.array(none_rows, dtype=float)
-    tm_mat   = np.array(tm_rows,   dtype=float)
-    ta_mat   = np.array(ta_rows,   dtype=float)
-    ft_mat   = np.array(ft_rows,   dtype=float)
-    none_ss  = np.array(none_ss, dtype=float)
-    tm_ss    = np.array(tm_ss,   dtype=float)
-    ta_ss    = np.array(ta_ss,   dtype=float)
-    ft_ss    = np.array(ft_ss,   dtype=float)
+    # accuracy matrices
+    none_mat     = np.array(none_rows,     dtype=float)
+    tm_mat       = np.array(tm_rows,       dtype=float)
+    ta_mat       = np.array(ta_rows,       dtype=float)
+    ft_mat       = np.array(ft_rows,       dtype=float)
+    none_ss      = np.array(none_ss,       dtype=float)
+    tm_ss        = np.array(tm_ss,         dtype=float)
+    ta_ss        = np.array(ta_ss,         dtype=float)
+    ft_ss        = np.array(ft_ss,         dtype=float)
+    # recall matrices
+    none_rec_mat = np.array(none_rec_rows, dtype=float)
+    tm_rec_mat   = np.array(tm_rec_rows,   dtype=float)
+    ta_rec_mat   = np.array(ta_rec_rows,   dtype=float)
+    ft_rec_mat   = np.array(ft_rec_rows,   dtype=float)
+    none_rec_ss  = np.array(none_rec_ss,   dtype=float)
+    tm_rec_ss    = np.array(tm_rec_ss,     dtype=float)
+    ta_rec_ss    = np.array(ta_rec_ss,     dtype=float)
+    ft_rec_ss    = np.array(ft_rec_ss,     dtype=float)
+    # F1 matrices
+    none_f1_mat  = np.array(none_f1_rows,  dtype=float)
+    tm_f1_mat    = np.array(tm_f1_rows,    dtype=float)
+    ta_f1_mat    = np.array(ta_f1_rows,    dtype=float)
+    ft_f1_mat    = np.array(ft_f1_rows,    dtype=float)
+    none_f1_ss   = np.array(none_f1_ss,    dtype=float)
+    tm_f1_ss     = np.array(tm_f1_ss,      dtype=float)
+    ta_f1_ss     = np.array(ta_f1_ss,      dtype=float)
+    ft_f1_ss     = np.array(ft_f1_ss,      dtype=float)
 
     ss = {
         "k": k, "n_seeds": len(seeds),
+        # accuracy
         "none_mean": float(np.nanmean(none_ss)), "none_std": float(np.nanstd(none_ss)),
         "tm_mean":   float(np.nanmean(tm_ss)),   "tm_std":   float(np.nanstd(tm_ss)),
         "ta_mean":   float(np.nanmean(ta_ss)),   "ta_std":   float(np.nanstd(ta_ss)),
         "ft_mean":   float(np.nanmean(ft_ss)),   "ft_std":   float(np.nanstd(ft_ss)),
+        # recall
+        "none_rec_mean": float(np.nanmean(none_rec_ss)), "none_rec_std": float(np.nanstd(none_rec_ss)),
+        "tm_rec_mean":   float(np.nanmean(tm_rec_ss)),   "tm_rec_std":   float(np.nanstd(tm_rec_ss)),
+        "ta_rec_mean":   float(np.nanmean(ta_rec_ss)),   "ta_rec_std":   float(np.nanstd(ta_rec_ss)),
+        "ft_rec_mean":   float(np.nanmean(ft_rec_ss)),   "ft_rec_std":   float(np.nanstd(ft_rec_ss)),
+        # F1
+        "none_f1_mean": float(np.nanmean(none_f1_ss)), "none_f1_std": float(np.nanstd(none_f1_ss)),
+        "tm_f1_mean":   float(np.nanmean(tm_f1_ss)),   "tm_f1_std":   float(np.nanstd(tm_f1_ss)),
+        "ta_f1_mean":   float(np.nanmean(ta_f1_ss)),   "ta_f1_std":   float(np.nanstd(ta_f1_ss)),
+        "ft_f1_mean":   float(np.nanmean(ft_f1_ss)),   "ft_f1_std":   float(np.nanstd(ft_f1_ss)),
     }
     recovery_ta = ss["ta_mean"] - ss["none_mean"]
     recovery_ft = ss["ft_mean"] - ss["none_mean"]
@@ -323,14 +418,15 @@ def main():
     print(f" AGGREGATE over {len(seeds)} seeds  "
           f"(attack={args.attack}, scale={args.scale}, alpha={args.alpha})")
     print("=" * 60)
-    print(f"  Steady-state accuracy:")
-    print(f"    No defense      : {ss['none_mean']:5.1f}% \u00b1 {ss['none_std']:.1f}")
-    print(f"    Trimmed mean    : {ss['tm_mean']:5.1f}% \u00b1 {ss['tm_std']:.1f}  "
-          f"(+{ss['tm_mean']-ss['none_mean']:.1f} pp)")
-    print(f"    FLTrust         : {ss['ft_mean']:5.1f}% \u00b1 {ss['ft_std']:.1f}  "
-          f"(+{recovery_ft:.1f} pp)")
-    print(f"    Trust-anchored  : {ss['ta_mean']:5.1f}% \u00b1 {ss['ta_std']:.1f}  "
-          f"(+{recovery_ta:.1f} pp)")
+    print(f"  {'Defense':<18} {'Acc':>8} {'Recall':>8} {'F1':>8}")
+    print(f"  {'-'*44}")
+    for name, acc_m, acc_s, rec_m, rec_s, f1_m, f1_s in [
+        ("No defense",     ss["none_mean"], ss["none_std"], ss["none_rec_mean"], ss["none_rec_std"], ss["none_f1_mean"], ss["none_f1_std"]),
+        ("Trimmed mean",   ss["tm_mean"],   ss["tm_std"],   ss["tm_rec_mean"],   ss["tm_rec_std"],   ss["tm_f1_mean"],   ss["tm_f1_std"]),
+        ("FLTrust",        ss["ft_mean"],   ss["ft_std"],   ss["ft_rec_mean"],   ss["ft_rec_std"],   ss["ft_f1_mean"],   ss["ft_f1_std"]),
+        ("Trust-anchored", ss["ta_mean"],   ss["ta_std"],   ss["ta_rec_mean"],   ss["ta_rec_std"],   ss["ta_f1_mean"],   ss["ta_f1_std"]),
+    ]:
+        print(f"  {name:<18} {acc_m:5.1f}\u00b1{acc_s:.1f}  {rec_m:5.1f}\u00b1{rec_s:.1f}  {f1_m:5.1f}\u00b1{f1_s:.1f}")
 
     with open("multiseed_results.json", "w") as f:
         json.dump({
@@ -351,14 +447,43 @@ def main():
                 "trust_anchored": np.nanstd(ta_mat, 0).tolist(),
                 "fltrust": np.nanstd(ft_mat, 0).tolist(),
             },
+            "per_round_mean_recall": {
+                "none": np.nanmean(none_rec_mat, 0).tolist(),
+                "trimmed_mean": np.nanmean(tm_rec_mat, 0).tolist(),
+                "trust_anchored": np.nanmean(ta_rec_mat, 0).tolist(),
+                "fltrust": np.nanmean(ft_rec_mat, 0).tolist(),
+            },
+            "per_round_std_recall": {
+                "none": np.nanstd(none_rec_mat, 0).tolist(),
+                "trimmed_mean": np.nanstd(tm_rec_mat, 0).tolist(),
+                "trust_anchored": np.nanstd(ta_rec_mat, 0).tolist(),
+                "fltrust": np.nanstd(ft_rec_mat, 0).tolist(),
+            },
+            "per_round_mean_f1": {
+                "none": np.nanmean(none_f1_mat, 0).tolist(),
+                "trimmed_mean": np.nanmean(tm_f1_mat, 0).tolist(),
+                "trust_anchored": np.nanmean(ta_f1_mat, 0).tolist(),
+                "fltrust": np.nanmean(ft_f1_mat, 0).tolist(),
+            },
+            "per_round_std_f1": {
+                "none": np.nanstd(none_f1_mat, 0).tolist(),
+                "trimmed_mean": np.nanstd(tm_f1_mat, 0).tolist(),
+                "trust_anchored": np.nanstd(ta_f1_mat, 0).tolist(),
+                "fltrust": np.nanstd(ft_f1_mat, 0).tolist(),
+            },
             "aggregate": ss,
             "recovery_ta_pp": recovery_ta,
             "recovery_ft_pp": recovery_ft,
         }, f, indent=2)
     print(f"\n  numbers saved -> multiseed_results.json")
 
-    make_plots(rounds_axis, none_mat, tm_mat, ta_mat, ft_mat, ss,
-               "multiseed_convergence.png", "multiseed_barplot.png")
+    make_plots(rounds_axis,
+               none_mat, tm_mat, ta_mat, ft_mat,
+               none_rec_mat, tm_rec_mat, ta_rec_mat, ft_rec_mat,
+               ss,
+               "multiseed_convergence.png",
+               "multiseed_recall.png",
+               "multiseed_barplot.png")
 
     sys.stdout = tee._stdout
     tee.close()
