@@ -247,11 +247,9 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
 
         # Cosine trust scores — ReLU so negative similarity → 0 weight.
         cos_scores = []
-        client_norms = []
         for delta in client_deltas:
             flat = np.concatenate([d.flatten() for d in delta])
             cn   = float(np.linalg.norm(flat)) + 1e-9
-            client_norms.append(cn)
             cos  = float(np.dot(flat, server_flat)) / cn / server_norm
             cos_scores.append(max(0.0, cos))
 
@@ -261,13 +259,13 @@ class ByzantineRobustStrategy(fl.server.strategy.FedAvg):
         print(f"    [FLTrust cos] {[f'{s:.2f}' for s in cos_scores]}")
         print(f"    [weights    ] {[f'{w:.2f}' for w in weights]}")
 
-        # Aggregate: each client delta normalised to server_norm, weighted by cos.
-        aggregated_delta = []
-        for t in range(n_tensors):
-            agg_t = np.zeros_like(global_params[t], dtype=float)
-            for w, cn, delta in zip(weights, client_norms, client_deltas):
-                agg_t += w * delta[t] * (server_norm / cn)
-            aggregated_delta.append(agg_t)
+        # Aggregate: cosine-weighted average of client deltas, no magnitude
+        # rescaling. Rescaling caused oscillation when server epochs ≠ client
+        # epochs (server reference magnitude ≠ client update magnitude).
+        aggregated_delta = [
+            sum(w * delta[t] for w, delta in zip(weights, client_deltas))
+            for t in range(n_tensors)
+        ]
 
         return [g + d for g, d in zip(global_params, aggregated_delta)]
 
