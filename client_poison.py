@@ -70,7 +70,7 @@ class PoisonClient(fl.client.NumPyClient):
                   f"({int((y == 1).sum())} FBS sessions relabeled) L2={l2:.3f}")
             return poisoned, len(X), {}
 
-        global_params = model_get_params(self.model)  # weights before training
+        global_params = [p.copy() for p in model_get_params(self.model)]  # copies before training
         train_local(self.model, X, y, epochs=args.local_epochs)
         honest = model_get_params(self.model)
         # Delta = what this round of training actually changed.
